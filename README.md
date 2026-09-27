@@ -83,6 +83,12 @@ or if a gate is dropped from the `ci` recipe.
 `--frozen` matters. Without it a stale `uv.lock` is silently re-resolved rather than
 reported, so CI would test something other than what is committed.
 
+**`make ci` is still five gates.** The documentation checks are pytest tests, so they run
+inside `make check` rather than as a sixth gate — the README's own claims about the code are
+gated by the same command that gates the code, and the recipe did not change to make that
+true. `EXPECTED_GATES` in `tests/test_ci_contract.py` pins the set, so adding a sixth gate
+without saying so fails the suite.
+
 Each gate was verified to fail before it was trusted: a stale lock, a broken assertion, a
 wrong eval expectation, a marker that catches nothing, and an end-to-end regression each
 turn `make ci` non-zero, and `make ci` stops at the first one.
