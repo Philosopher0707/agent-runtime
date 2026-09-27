@@ -16,6 +16,14 @@ named in `runtime/factory.py` and nowhere else.
 
 ## Conventions that are not obvious from the code
 
+- **The injection markers are measured, not asserted.** `make markers` grades the rule
+  against `evals/markers.py` and exits non-zero below threshold; the same thresholds are
+  enforced in `tests/test_marker_precision.py`, so the report and the tripwire cannot
+  disagree. **Every marker must be load-bearing** — an ablation test fails if removing one
+  costs no recall. Adding a marker requires evidence it earns its place; a marker that
+  catches nothing is pure false-positive risk. The false-positive budget is **zero**,
+  because every benign sample was chosen by hand to represent real tool output. The
+  tempting wrong fix is to delete the benign sample that fails.
 - **`AGENTS_LEARNING.md` is maintained as we go.** It is the project's learning log —
   surprises, mistakes, open questions — and it is the *first* entry under "Where to look"
   in `AGENTS.md`. Append a dated entry (`### YYYY-MM-DD — title`) whenever you learn
@@ -54,6 +62,10 @@ named in `runtime/factory.py` and nowhere else.
 - The loop finishes exactly once per run: use `_note_stop` (records, returns the reason)
   from the paths that hand a reason back, and let the loop call `_finish`. Calling
   `_stop(...).reason` double-emits `run_finished`.
+- **A threshold is only a tripwire if the corpus makes it sharp.** A 5% false-positive
+  budget on a 26-sample corpus tolerates exactly one failure, so it never bit — defeating
+  the proximity rule entirely passed the suite. Corollary: a rule needs a *corpus sample*
+  covering it, not just a unit test, or the metric will not notice its removal.
 
 ## Environment
 

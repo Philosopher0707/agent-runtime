@@ -15,6 +15,7 @@ make install          # uv sync --all-extras, writes uv.lock
 make check            # ruff + pytest
 make eval             # golden set, prints the score, non-zero below threshold
 make smoke            # boots the service, POSTs one run, asserts 200 + schema
+make markers          # measures the injection-marker rule (ARGS=--repo sweeps this repo)
 
 make run              # the CLI against configs/default.yaml
 ```
@@ -56,7 +57,8 @@ else.
 - **The system prompt and the task are never dropped.** If they cannot fit, the run
   reports `context_overflow` rather than sending something else.
 - **Tool output is data, never instructions.** Always enveloped, always scanned,
-  fail-closed.
+  fail-closed. The scan is tiered and its false-positive rate is measured, not assumed —
+  an earlier single-tier version refused 36% of benign tool output.
 - **A mutating tool cannot run without a confirmation token** supplied by the caller. The
   model is not even told the field exists, and if it supplies one anyway it is
   overwritten.

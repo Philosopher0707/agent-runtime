@@ -7,13 +7,14 @@ export UV_PYTHON
 
 UV ?= uv
 
-.PHONY: help install check lint format test eval smoke run clean
+.PHONY: help install check lint format test eval smoke markers run clean
 
 help:
 	@echo "install  sync dependencies into .venv (creates uv.lock)"
 	@echo "check    ruff + pytest            <- run before every commit"
 	@echo "eval     golden-set run, prints score, non-zero below threshold"
 	@echo "smoke    boot the service, POST one run, assert 200 + output schema"
+	@echo "markers  measure the injection-marker rule (ARGS=--repo to sweep this repo)"
 	@echo "run      run the CLI against configs/default.yaml"
 
 install:
@@ -37,6 +38,9 @@ eval:
 
 smoke:
 	$(UV) run python scripts/smoke.py
+
+markers:
+	$(UV) run python scripts/measure_markers.py $(ARGS)
 
 run:
 	$(UV) run python cli.py --config configs/default.yaml --task "What is 21 * 2?"

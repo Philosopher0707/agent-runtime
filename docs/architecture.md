@@ -76,6 +76,7 @@ returns nothing, and every vendor string lives in `providers/`.
 | Four bounds, none optional | `BudgetConfig` (no defaults) + `Budget.check` | `test_budget.py` |
 | The system prompt and task are never dropped | `ContextAssembler.build` (raises rather than lies) | `test_context.py` |
 | Tool output is never instructions | `context/sanitize` + the loop's guardrail | `test_sanitize.py`, `test_taxonomy.py` |
+| Every injection marker earns its place | the ablation test | `test_marker_precision.py` |
 | A mutating tool cannot run without a token | `ToolRegistry.register` **and** `dispatch` | `test_tools.py` |
 | The model cannot authorise a side effect | dispatch overwrites the field; it is never advertised | `test_tools.py` |
 | A trace alone reconstructs the run | `TraceWriter` records responses, outcomes, and descriptors | `test_replay.py` |
@@ -94,7 +95,8 @@ Three different levels of trust, applied consistently:
    is refused.
 
 Rationale in [decisions/0006](decisions/0006-untrusted-content-policy.md) and
-[decisions/0009](decisions/0009-trust-model.md).
+[decisions/0009](decisions/0009-trust-model.md). The detector behind the second rule is
+tiered and measured — [decisions/0011](decisions/0011-marker-precision-tiering.md).
 
 ## Status is derived, not asserted
 
@@ -126,6 +128,8 @@ A capability is a configuration, never a branch in the core.
 2. Add `configs/<name>.yaml`. All four budget bounds are mandatory.
 3. Add cases under `evals/cases/` that force the failure classes it can hit.
 4. Run `make check && make eval`. If the score moves, say so in the commit message.
+5. If you touched the injection markers, run `make markers`. It fails below threshold, and
+   the ablation test will refuse a marker that catches nothing.
 
 ## What is not here
 
@@ -147,3 +151,9 @@ Stated rather than discovered later:
   Replay takes an injectable clock for exactly this reason.
 - **`openai_compat` is verified against a mock transport, not a live endpoint.** The
   parsing and error paths are covered; the vendor's actual behaviour is not.
+- **The injection scan is a tripwire with a measured precision limit.** It is lexical, so
+  it cannot distinguish a payload from prose that *quotes* a payload, and it misses
+  payloads written as ordinary plausible prose. Measured at 0% false positives and 100%
+  recall on a hand-built corpus of 26 benign and 15 hostile samples
+  ([decisions/0011](decisions/0011-marker-precision-tiering.md)); the corpus is not real
+  tool output. The envelope, not the scan, is the primary defence.

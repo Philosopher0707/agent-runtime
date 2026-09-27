@@ -353,8 +353,8 @@ def test_guardrail_untrusted_injection_and_the_tool_is_not_called(tracer) -> Non
     assert dangerous.calls == []
     assert output.model_calls == 1
     # The detail names the markers that fired, so the log says *which* payload.
-    assert "ignore_previous_instructions" in output.failures[0].detail
-    assert "must_call_tool" in output.failures[0].detail
+    assert "instruction_override" in output.failures[0].detail
+    assert "tool_call_directive" in output.failures[0].detail
 
 
 def test_guardrail_confirmation_missing_and_the_tool_is_not_called(tracer) -> None:

@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
 from context.assembler import ContextAssembler, ContextUnfit
-from context.sanitize import detect_injection, leaks_system_prompt, wrap_untrusted
+from context.sanitize import assess, leaks_system_prompt, wrap_untrusted
 from providers.base import Provider, ProviderError, prompt_hash
 from runtime.budget import Budget, BudgetExceeded
 from runtime.config import Configuration
@@ -409,13 +409,12 @@ class _Orchestrator:
 
         if record.outcome is ToolOutcome.OK:
             content = record.result or ""
-            markers = detect_injection(content)
-            if markers:
+            assessment = assess(content)
+            if assessment.trip:
                 return self._note_stop(
                     FailureClass.GUARDRAIL_TRIP,
                     RunStatus.REFUSED,
-                    f"untrusted content from {record.name!r} carries instruction markers: "
-                    f"{', '.join(markers)}",
+                    f"untrusted content from {record.name!r}: {assessment.reason}",
                     step=step,
                     guardrail=Guardrail.UNTRUSTED_INJECTION,
                     reason="guardrail:untrusted_injection",
