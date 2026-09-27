@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from runtime.schemas import ModelCallRecord, ToolCallRecord, TraceEvent
+from runtime.schemas import TRACE_SCHEMA_VERSION, ModelCallRecord, ToolCallRecord, TraceEvent
 from runtime.trace import (
     TraceError,
     TraceWriter,
@@ -45,6 +45,74 @@ def test_every_line_carries_the_trace_id(tmp_path) -> None:
         path = writer.path
     for line in path.read_text(encoding="utf-8").splitlines():
         assert json.loads(line)["trace_id"] == "t2"
+
+
+def test_every_line_carries_the_schema_version(tmp_path) -> None:
+    """On every line, not in a header, so a mixed file cannot pass as a whole one."""
+    with TraceWriter(tmp_path, "t2") as writer:
+        writer.emit("a")
+        writer.emit("b")
+        path = writer.path
+    for line in path.read_text(encoding="utf-8").splitlines():
+        assert json.loads(line)["schema_version"] == TRACE_SCHEMA_VERSION
+
+
+def test_a_trace_from_an_older_format_is_refused_clearly(tmp_path) -> None:
+    """A format change used to surface as a divergence blaming context assembly.
+
+    That is the wrong diagnosis: an old trace is a fact about the file, not a defect in
+    the code, and the message has to say which it is.
+    """
+    path = tmp_path / "old.jsonl"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 0,
+                "ts": "a",
+                "trace_id": "t",
+                "event": "run_started",
+                "payload": {},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(TraceError) as caught:
+        read_trace(path)
+    message = str(caught.value)
+    assert "schema version 0" in message
+    assert f"version {TRACE_SCHEMA_VERSION}" in message
+
+
+def test_a_mixed_version_file_is_refused(tmp_path) -> None:
+    """Per-line versioning is what makes this detectable at all."""
+    path = tmp_path / "mixed.jsonl"
+    path.write_text(
+        "\n".join(
+            [
+                json.dumps(TraceEvent(ts="a", trace_id="t", event="one").model_dump()),
+                json.dumps(
+                    TraceEvent(ts="b", trace_id="t", event="two", schema_version=99).model_dump()
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(TraceError, match="schema version 99"):
+        read_trace(path)
+
+
+def test_a_trace_written_before_versioning_still_reads(tmp_path) -> None:
+    """Version 1 is the format as it stood when the field was added, so a line without it
+    is version 1 rather than unknown — which is why the field has a default."""
+    path = tmp_path / "preversioning.jsonl"
+    path.write_text(
+        json.dumps({"ts": "a", "trace_id": "t", "event": "one", "payload": {}}) + "\n",
+        encoding="utf-8",
+    )
+    trace = read_trace(path)
+    assert trace.events[0].schema_version == TRACE_SCHEMA_VERSION
 
 
 def test_a_closed_writer_refuses_to_write(tmp_path) -> None:
