@@ -1,0 +1,16 @@
+id: single-tool-call
+description: >-
+  The property the whole tool boundary exists for: a real model asks for the tool, the
+  runtime dispatches it, and the answer contains the right number.
+
+  Note what is *not* asserted: the wording. A model may write "21 × 2 = 42", "**42**", or a
+  sentence. All are correct, and the golden set is where exactness belongs.
+task: What is 21 * 2? Use the calculator tool.
+config: openai_compat
+expect:
+  status_in: [ok]
+  tools_called_includes: [calculator]
+  failure_classes_exclude: [provider_error, guardrail_trip, tool_error, tool_timeout]
+  output_matches: "\\b42\\b"
+  steps_at_most: 3
+  model_calls_at_most: 3

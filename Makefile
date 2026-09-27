@@ -6,13 +6,14 @@ SHELL := /bin/bash
 # environment to override.
 UV ?= uv
 
-.PHONY: help install lock-check check lint format test eval smoke markers ci rollback run clean
+.PHONY: help install lock-check check lint format test eval live smoke markers ci rollback run clean
 
 help:
 	@echo "install     sync dependencies into .venv (creates uv.lock)"
 	@echo "ci          every gate, in order, stopping at the first failure  <- what CI runs"
 	@echo "check       ruff + pytest            <- run before every commit"
 	@echo "eval        golden-set run, prints score, non-zero below threshold"
+	@echo "live        property suite against a REAL model (needs AGENT_API_KEY; not in ci)"
 	@echo "markers     measure the injection-marker rule (ARGS=--repo sweeps this repo)"
 	@echo "smoke       boot the service, POST one run, assert 200 + output schema"
 	@echo "lock-check  fail if uv.lock is out of date with pyproject.toml"
@@ -53,6 +54,12 @@ test:
 
 eval:
 	$(UV) run python -m evals.score
+
+# Not part of `ci`: this calls a real model, so it needs a key and it is not deterministic.
+# The CI-safe half of the same question is `tests/test_recorded_runs.py`, which replays
+# recorded real traces with no key and no network.
+live:
+	$(UV) run python -m evals.live $(ARGS)
 
 markers:
 	$(UV) run python scripts/measure_markers.py $(ARGS)

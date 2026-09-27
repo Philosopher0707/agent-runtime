@@ -88,6 +88,7 @@ returns nothing, and every vendor string lives in `providers/`.
 | A declared cost bound can actually bind | `Configuration` refuses a costed provider with no prices | `test_config.py` |
 | Every entry point loads `.env` | enumerated by test, not remembered | `test_env_file.py` |
 | A prompt change names *which* part moved | `context/fingerprint.py`, recorded in `run_started` | `test_fingerprint.py` |
+| The runtime reproduces recorded real runs | `runtime/replay.py` over committed fixtures | `test_recorded_runs.py` |
 
 ## The trust model
 
@@ -184,9 +185,16 @@ Stated rather than discovered later:
   afterwards. Two concurrent runs calling `write_note` with the same filename race, and the
   last write wins silently. That is the one piece of shared mutable state, and it is
   carried by the tool the design uses to demonstrate the confirmation gate.
-- **`openai_compat` has run against a live endpoint**, and a real trace replayed exactly.
-  The parsing and error paths are covered against a mock transport; a wide range of
-  providers has not been tried, and the two ratios in
+- **`refused` is vendor-signalled, not detected.** `model_refusal` fires when the provider
+  reports `refusal` or `finish_reason: content_filter`. A model that declines *in words* —
+  "I'm not able to give you dosing advice" — without setting the flag is recorded as `ok` with
+  the refusal as the output. Found by the live suite on its first run; the model behaved
+  correctly and the runtime called it an ordinary answer. Deliberately not fixed by matching
+  refusal prose, which would reclassify successful answers silently
+  ([decisions/0019](decisions/0019-refusal-is-vendor-signalled.md)).
+- **`openai_compat` has run against a live endpoint**, and real traces replay exactly. The
+  parsing and error paths are covered against a mock transport; a wide range of providers has
+  not been tried, and the two ratios in
   [decisions/0005](decisions/0005-token-estimation.md) are calibrated from a single vendor.
 - **There is no per-model price table.** Prices are per-configuration, so a price change is
   a config edit and an unknown model is a missing price, not a lookup failure. The *silent*

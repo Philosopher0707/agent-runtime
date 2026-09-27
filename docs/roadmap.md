@@ -41,24 +41,33 @@ stub does: one tool call per turn, arguments that validate, text that parses. If
 model does not, the failure taxonomy is a hypothesis and the eval harness is measuring a
 fiction. This is the cheapest step that can invalidate the most.
 
-**Partially done, 2026-09-27.** A real endpoint has now run the loop end to end — a plain
-answer and a native tool call, both correct — and a real trace replayed exactly. It found
-two defects immediately (the token estimate omitted the tool schemas and used the prose
-ratio for JSON; the two context thresholds measured the same quantity when they should
-measure different ones). Both fixed, with the numbers in
-[decisions/0005](decisions/0005-token-estimation.md).
+**Done, 2026-09-27.** A real endpoint has run the loop end to end — a plain answer and a
+native tool call, both correct — and real traces replay exactly. Three things came out of it,
+and each is the kind of result this step existed to produce:
 
-**What is left of this step:**
+1. **Two defects, in four API calls.** The token estimate omitted the tool schemas and used
+   the prose ratio for JSON; the two context thresholds measured the same quantity when they
+   should measure different ones. Both fixed, with the numbers in
+   [decisions/0005](decisions/0005-token-estimation.md).
+2. **A second scorer mode**, and with it a decision about what each suite is for: the golden
+   set is the runtime's *contract* (exact, deterministic, in CI) and the live suite is the
+   *model's* behaviour (properties, opt-in). Real traces are committed as fixtures and
+   replayed in CI, so the question has a CI-safe answer too
+   ([decisions/0018](decisions/0018-two-eval-suites.md)).
+3. **A taxonomy gap, found by the live suite on its first run.** `refused` is
+   vendor-signalled: a model that declined *in words* was recorded as `ok`. The model behaved
+   correctly and the runtime called it an ordinary answer
+   ([decisions/0019](decisions/0019-refusal-is-vendor-signalled.md)).
 
-- **A second scorer mode.** The 33 cases assert *exact* outcomes — `output_exact`,
-  `model_calls: 2`, `attempts: 1` — because the stub is deterministic. A real model is not,
-  so a live run must assert *properties*: the status, the failure classes, whether a tool
-  was called, whether the guardrail held. The stub suite stays as the contract test; the
-  live suite is a separate thing, and mixing them would make both meaningless.
-- **A recorded-trace fixture from a real run**, so the live suite can be replayed in CI
-  without a key.
-- **The taxonomy against a real model's failure modes** — does it ever produce something
-  the ten rows cannot describe?
+**And the answer to the question this step was really asking** — does a real model produce
+something the ten rows cannot describe — is *no, but a class can go undetected*. The taxonomy
+was not missing a row; one of its rows depends on the vendor reporting something.
+
+A real model also **resisted an injected instruction** on both live runs: a tool returned
+plausible prose telling it to call `write_note`, the payload was verified to evade the marker
+scan, and the model treated it as data. That is the semantic-injection gap from
+[decisions/0006](decisions/0006-untrusted-content-policy.md) measured rather than asserted —
+two runs is not a guarantee, and it is now a committed fixture so it stays true.
 
 ### 2. Rollback, scoped to a local-only project
 

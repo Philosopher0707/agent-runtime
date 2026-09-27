@@ -1,0 +1,13 @@
+id: plain-answer
+description: >-
+  A question that needs no tool. The simplest live property: a real model answers, the run
+  succeeds, and nothing trips.
+task: What is the capital of Portugal? Answer in one short sentence.
+config: openai_compat
+expect:
+  status_in: [ok]
+  failure_classes_exclude: [provider_error, guardrail_trip, unparseable_output]
+  output_min_chars: 3
+  output_matches: "(lisbon|lisboa)"
+  steps_at_most: 2
+  model_calls_at_most: 2
