@@ -8,8 +8,14 @@ document** — edit it as the plan changes. What actually happened belongs in
 
 The runtime is complete against the spec: a bounded loop, a tool boundary with a
 confirmation gate, four enforced budget bounds, replayable traces, a tiered injection
-guardrail, redaction, a golden set, and CI that `main` requires. 271 tests, 33 eval cases,
-two merged PRs, `main` protected.
+guardrail, redaction, a golden set, and CI that `main` requires. `main` is protected, so
+every change arrives through a pull request with a green check.
+
+Run `make ci` for the current counts. They are deliberately **not** written down here: a
+hard-coded number in prose goes stale the moment anyone adds a test, and this line proved
+it — it carried a count that was already wrong, was "refreshed" to a second wrong count, and
+had to be rolled back. The rollback restored the first wrong number, because rollback
+restores a revision, not correctness.
 
 **And nothing in it has met real data.** Every eval case is stub-driven. A stub is a
 *specification* of a model, not a model — it cannot violate our assumptions, and real ones

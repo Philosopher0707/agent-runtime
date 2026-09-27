@@ -493,3 +493,60 @@ people forget.*
 documentation change — cannot be pushed directly. It goes through a branch and a PR like
 everything else. That is a real cost in turns and it is the correct trade: the rule applies
 to the person who wrote it, or it is not a rule.
+
+### 2026-09-27 — Rollback, and the mistake it was performed on
+
+**L35. "Performed once before you need it" meant performing it, so I made a real mistake and
+rolled it back.**
+
+The sequence, all of it on `main`:
+
+| commit | what |
+|---|---|
+| `b612525` | the roadmap lands |
+| `4450bb8` | a plausible stale number lands — *green CI, every gate* |
+| `ed91e7f` | `make rollback` reverts it, and opens its own PR |
+
+The mistake was a test count in a paragraph, changed from one stale value to another. It
+passed lint, 284 tests, 33 eval cases, the marker thresholds and smoke. **Nothing in the
+pipeline can tell whether a number in prose is right**, which is exactly the class of error
+rollback exists for — and why rollback is not redundant with CI.
+
+*Lesson: a rollback you have never run is a plan, not a capability. The only way to find out
+is to need one, so manufacture the need while nothing is at stake.*
+
+**L36. Rollback restores a revision, not correctness.**
+
+After the rollback, the roadmap said 271 tests. The truth was 284. The reverted commit had
+made a stale number worse, and the rollback restored the merely-stale one — so the file was
+"fixed" into still being wrong.
+
+That is not a defect in the tool; it is what a revert is. Worth knowing before reaching for
+one during an incident and assuming the problem is solved: **you get back to a known state,
+not to a correct one.** The follow-up fix was to delete the number from the prose entirely
+and point at `make ci`, because the real defect was a hard-coded fact that nothing checks.
+
+**L37. Performing it once found a real bug in the tool, which is the argument for performing
+it at all.**
+
+My first invocation was cut short part-way — after the branch was created and the revert
+committed, before the push. The second invocation then planned from the *new* HEAD, treated
+the previous revert as a commit to revert, and would have quietly produced the opposite of
+what was asked for. It only failed because the branch name collided.
+
+`make rollback` now refuses when its branch already exists, and says why. That guard exists
+because the tool was used, not because it was reviewed.
+
+*Lesson: a partially-completed operation that is safe to re-run is a different design
+problem from one that is not, and the difference is invisible until something interrupts the
+first run.*
+
+**L38. A hard-coded count in prose is a defect waiting for a commit.**
+
+The roadmap had one, and it is what the whole exercise ran on. The fix was not to update it
+to the right number — that would be correct until the next test was added — but to remove it
+and point at `make ci`.
+
+*Lesson: when a document states a fact that code can produce, the document should say how to
+produce it. This is the same reasoning as "never quote a count from memory", applied to a
+file instead of a sentence.*
