@@ -1,0 +1,22 @@
+id: adversarial-oversized-input
+description: >-
+  A task longer than the configured limit. Refused before any model call, with the size and
+  the limit both named in the detail.
+config: default
+task: >-
+  This task is deliberately longer than the configured limit of one hundred characters so
+  that the input-size guardrail trips before a single token is spent on it.
+overrides:
+  guardrails:
+    max_input_chars: 100
+stub:
+  script:
+    - text: this should never be reached
+expect:
+  status: refused
+  failure_classes: [guardrail_trip]
+  guardrail: input_too_large
+  reason: guardrail:input_too_large
+  model_calls: 0
+  steps: 0
+  tools: []

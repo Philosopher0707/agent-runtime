@@ -1,0 +1,17 @@
+id: provider-error-fails
+description: >-
+  The provider cannot be reached. The run fails, names the class, and — importantly —
+  records zero model calls, because a call that did not complete is not a call that
+  happened.
+config: default
+task: Say something.
+stub:
+  fail_on_call: 1
+  fail_message: connection reset by peer
+expect:
+  status: failed
+  failure_classes: [provider_error]
+  reason: provider_error
+  model_calls: 0
+  steps: 1
+  tools: []

@@ -1,0 +1,27 @@
+id: tool-error-idempotent-retry-recovers
+description: >-
+  A pure tool fails, is retried once because it is idempotent, and succeeds. The failure
+  class is recorded; the status stays ok, because the required behaviour was met. This is
+  the case that proves classes and statuses are separate.
+config: default
+task: What is 6 * 7?
+tools:
+  calculator:
+    behaviour: error_then_ok
+stub:
+  script:
+    - tool_calls:
+        - name: calculator
+          arguments:
+            expression: "6 * 7"
+    - text: 6 * 7 is 42.
+expect:
+  status: ok
+  failure_classes: [tool_error]
+  reason: completed
+  model_calls: 2
+  tools:
+    - name: calculator
+      outcome: ok
+      attempts: 2
+      attempt_outcomes: [error, ok]

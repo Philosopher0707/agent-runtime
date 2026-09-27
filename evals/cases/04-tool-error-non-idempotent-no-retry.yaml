@@ -1,0 +1,32 @@
+id: tool-error-non-idempotent-no-retry
+description: >-
+  A mutating tool fails. It is not retried — retrying could apply the mutation twice — and
+  because it is required, the run cannot complete. One attempt, partial.
+config: default
+task: Save a note.
+confirmation_token: token-abc
+tools:
+  write_note:
+    behaviour: error
+    side_effect: true
+    idempotent: false
+    optional: false
+stub:
+  script:
+    - tool_calls:
+        - name: write_note
+          arguments:
+            filename: a.txt
+            text: hello
+    - text: Saved.
+expect:
+  status: partial
+  failure_classes: [tool_error]
+  reason: required_tool_failed:write_note
+  model_calls: 1
+  notes_written: false
+  tools:
+    - name: write_note
+      outcome: error
+      attempts: 1
+      attempt_outcomes: [error]

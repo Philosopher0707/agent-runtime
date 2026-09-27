@@ -1,0 +1,22 @@
+id: ambiguous-input-one-question
+description: >-
+  The model asks for clarification. Exactly one question is asked and the run stops as
+  partial, awaiting the answer. It does not guess, and it does not ask twice.
+config: default
+task: Report the numbers.
+stub:
+  script:
+    - tool_calls:
+        - name: ask_clarification
+          arguments:
+            question: Which quarter should I report?
+expect:
+  status: partial
+  failure_classes: [ambiguous_input]
+  reason: awaiting_clarification
+  clarifying_question: true
+  clarifying_question_contains: Which quarter
+  clarifications_suppressed: 0
+  model_calls: 1
+  steps: 1
+  tools: []

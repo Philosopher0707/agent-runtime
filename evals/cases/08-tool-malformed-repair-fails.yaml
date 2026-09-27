@@ -1,0 +1,26 @@
+id: tool-malformed-repair-fails
+description: >-
+  The repair attempt is malformed too. One attempt was made and no more: the outcome is
+  reported as malformed, and the run continues without the optional tool, degraded.
+config: default
+task: What is 6 * 7?
+tools:
+  calculator:
+    behaviour: malformed
+stub:
+  script:
+    - tool_calls:
+        - name: calculator
+          arguments:
+            expression: "6 * 7"
+    - text: I could not compute that.
+expect:
+  status: degraded
+  failure_classes: [tool_malformed]
+  reason: completed
+  model_calls: 2
+  tools:
+    - name: calculator
+      outcome: malformed
+      attempts: 2
+      attempt_outcomes: [malformed, malformed]

@@ -1,0 +1,33 @@
+id: multi-step-tool-chain
+description: >-
+  Two tool calls across two steps, then an answer. Proves the loop accumulates rather than
+  restarts, and that both results reach the transcript.
+config: default
+task: What is (2 + 2) * 10?
+stub:
+  script:
+    - tool_calls:
+        - name: calculator
+          arguments:
+            expression: "2 + 2"
+    - tool_calls:
+        - name: calculator
+          arguments:
+            expression: "4 * 10"
+    - text: It is 40.
+expect:
+  status: ok
+  failure_classes: []
+  reason: completed
+  model_calls: 3
+  steps: 3
+  output_exact: It is 40.
+  tools:
+    - name: calculator
+      outcome: ok
+      attempts: 1
+      result_contains: "4"
+    - name: calculator
+      outcome: ok
+      attempts: 1
+      result_contains: "40"

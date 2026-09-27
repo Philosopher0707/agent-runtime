@@ -1,0 +1,24 @@
+id: ambiguous-input-empty-question-named
+description: >-
+  The model calls the clarification tool but asks nothing. There is no question to put to
+  the caller, so the ambiguity is named instead and the run ends partial.
+
+  This is the branch that makes "one question, or the ambiguity named" a total rule rather
+  than a hopeful one.
+config: default
+task: Report the numbers.
+stub:
+  script:
+    - tool_calls:
+        - name: ask_clarification
+          arguments:
+            question: "   "
+expect:
+  status: partial
+  failure_classes: [ambiguous_input]
+  reason: ambiguity_named
+  clarifying_question: false
+  clarifications_suppressed: 1
+  model_calls: 1
+  steps: 1
+  tools: []

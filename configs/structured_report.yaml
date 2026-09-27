@@ -1,0 +1,47 @@
+name: structured_report
+description: >-
+  Structured output. The final answer must satisfy a JSON Schema; an unusable answer
+  earns exactly one repair pass before the run fails. The scripted model answers badly
+  on purpose, so the repair path is the thing you are watching.
+
+system_prompt: |
+  You answer with a single JSON object and nothing else. No prose, no code fence.
+
+tools:
+  - calculator
+
+provider:
+  kind: stub
+  model: stub-mid-tier
+  stub_script:
+    # Unusable: JSON embedded in prose. The runtime rejects it and asks once for a repair.
+    - text: 'Sure! Here is the report: {"total": 42}'
+  stub_final: '{"total": 42, "currency": "CNY"}'
+
+budget:
+  max_steps: 5
+  max_tokens_total: 20000
+  max_wall_clock_s: 30
+  max_cost_usd: 0.05
+
+context:
+  max_prompt_tokens: 8000
+  summarise_above_tokens: 3000
+
+output:
+  format: json
+  schema:
+    type: object
+    required: [total, currency]
+    additionalProperties: false
+    properties:
+      total:
+        type: integer
+      currency:
+        type: string
+        enum: [CNY, USD]
+  max_repair_attempts: 1
+
+guardrails:
+  max_input_chars: 20000
+  untrusted_max_chars: 4000

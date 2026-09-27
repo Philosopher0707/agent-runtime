@@ -1,0 +1,27 @@
+id: unparseable-output-repair-fails
+description: >-
+  The repair pass fails too. One attempt was made and no more: the run fails, and the class
+  names what actually went wrong rather than blaming the model in general.
+config: default
+task: Report the total.
+overrides:
+  output:
+    format: json
+    schema:
+      type: object
+      required: [total]
+      properties:
+        total:
+          type: integer
+    max_repair_attempts: 1
+stub:
+  script:
+    - text: "The total is forty-two."
+    - text: "Still not JSON, sorry."
+expect:
+  status: failed
+  failure_classes: [unparseable_output]
+  reason: unparseable_output
+  model_calls: 2
+  steps: 2
+  tools: []

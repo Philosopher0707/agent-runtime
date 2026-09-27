@@ -1,0 +1,41 @@
+name: stateful_notes
+description: >-
+  The side-effect gate. write_note changes state, so it is not idempotent, so it is
+  never retried — and it cannot run at all without a confirmation token from the
+  caller. The model is not even told the field exists.
+
+system_prompt: |
+  You keep short notes for the user. To save something, call write_note. Confirm
+  briefly when you have.
+
+tools:
+  - write_note
+  - clock
+
+provider:
+  kind: stub
+  model: stub-mid-tier
+  stub_script:
+    - tool_calls:
+        - name: write_note
+          arguments:
+            filename: todo.txt
+            text: buy milk
+    - text: Saved the note.
+
+budget:
+  max_steps: 6
+  max_tokens_total: 20000
+  max_wall_clock_s: 30
+  max_cost_usd: 0.05
+
+context:
+  max_prompt_tokens: 8000
+  summarise_above_tokens: 3000
+
+output:
+  format: text
+
+guardrails:
+  max_input_chars: 20000
+  untrusted_max_chars: 4000

@@ -1,0 +1,17 @@
+id: baseline-text-answer
+description: >-
+  The simplest path: the model answers without calling anything. The baseline every
+  other case is a departure from.
+config: default
+task: What is the capital of France?
+stub:
+  script:
+    - text: Paris.
+expect:
+  status: ok
+  failure_classes: []
+  reason: completed
+  model_calls: 1
+  steps: 1
+  output_exact: Paris.
+  tools: []

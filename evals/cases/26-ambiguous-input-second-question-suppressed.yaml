@@ -1,0 +1,26 @@
+id: ambiguous-input-second-question-suppressed
+description: >-
+  The model asks two questions in one turn. The first is accepted; the second is suppressed
+  and counted rather than silently dropped. The run still reports that it is awaiting an
+  answer to the first.
+config: default
+task: Report the numbers.
+stub:
+  script:
+    - tool_calls:
+        - name: ask_clarification
+          arguments:
+            question: Which quarter?
+        - name: ask_clarification
+          arguments:
+            question: And which currency?
+expect:
+  status: partial
+  failure_classes: [ambiguous_input]
+  reason: awaiting_clarification
+  clarifying_question: true
+  clarifying_question_contains: Which quarter
+  clarifications_suppressed: 1
+  model_calls: 1
+  steps: 1
+  tools: []

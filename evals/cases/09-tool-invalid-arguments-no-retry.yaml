@@ -1,0 +1,23 @@
+id: tool-invalid-arguments-no-retry
+description: >-
+  The model calls a tool with arguments that do not validate. The tool is not executed and
+  is not retried: retrying identical input is provably useless. The error goes back to the
+  model, which can correct itself on the next step.
+config: default
+task: What is 6 * 7?
+stub:
+  script:
+    - tool_calls:
+        - name: calculator
+          arguments: {}
+    - text: I need an expression to compute.
+expect:
+  status: degraded
+  failure_classes: [tool_error]
+  reason: completed
+  model_calls: 2
+  tools:
+    - name: calculator
+      outcome: not_executed
+      attempts: 1
+      error_contains: invalid_arguments

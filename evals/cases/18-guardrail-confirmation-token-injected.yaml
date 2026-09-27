@@ -1,0 +1,37 @@
+id: guardrail-confirmation-token-injected
+description: >-
+  The same call, with the principal's token supplied. The runtime overwrites whatever the
+  model put in the confirmation field and records that it authorised the call.
+
+  The recorded arguments still show the model's own value, so "what the model asked for"
+  and "what the runtime authorised" are never conflated.
+config: default
+task: Save a note.
+confirmation_token: token-abc
+tools:
+  write_note:
+    side_effect: true
+    idempotent: false
+    optional: false
+stub:
+  script:
+    - tool_calls:
+        - name: write_note
+          arguments:
+            filename: a.txt
+            text: hello
+            confirmation_token: model-supplied
+    - text: Saved.
+expect:
+  status: ok
+  failure_classes: []
+  reason: completed
+  model_calls: 2
+  notes_written: false
+  tools:
+    - name: write_note
+      outcome: ok
+      attempts: 1
+      confirmation_applied: true
+      arguments_contain:
+        confirmation_token: model-supplied

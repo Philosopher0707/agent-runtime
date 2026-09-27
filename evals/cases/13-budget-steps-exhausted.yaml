@@ -1,0 +1,30 @@
+id: budget-steps-exhausted
+description: >-
+  The step bound is reached. The loop stops, reports partial, and names the exhausted
+  limit. It does not hang and it does not raise.
+config: default
+task: Count to three.
+overrides:
+  budget:
+    max_steps: 1
+stub:
+  script:
+    - tool_calls:
+        - name: calculator
+          arguments:
+            expression: "1 + 1"
+    - tool_calls:
+        - name: calculator
+          arguments:
+            expression: "2 + 2"
+    - text: done
+expect:
+  status: partial
+  failure_classes: [budget_exhausted]
+  reason: budget_exhausted:max_steps
+  model_calls: 1
+  steps: 1
+  tools:
+    - name: calculator
+      outcome: ok
+      attempts: 1

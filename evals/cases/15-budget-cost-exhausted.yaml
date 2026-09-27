@@ -1,0 +1,21 @@
+id: budget-cost-exhausted
+description: >-
+  The cost bound is exceeded. Cost is derived from the provider's declared prices, so this
+  is the same accounting a real endpoint would produce.
+config: default
+task: Say something.
+overrides:
+  budget:
+    max_cost_usd: 0.000001
+  provider:
+    price_input_per_mtok: 1000.0
+    price_output_per_mtok: 1000.0
+stub:
+  script:
+    - text: Something.
+expect:
+  status: partial
+  failure_classes: [budget_exhausted]
+  reason: budget_exhausted:max_cost_usd
+  model_calls: 1
+  steps: 1

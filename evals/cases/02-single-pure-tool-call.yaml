@@ -1,0 +1,23 @@
+id: single-pure-tool-call
+description: One tool call, then an answer. The ordinary shape of a run.
+config: default
+task: What is 6 * 7?
+stub:
+  script:
+    - tool_calls:
+        - name: calculator
+          arguments:
+            expression: "6 * 7"
+    - text: 6 * 7 is 42.
+expect:
+  status: ok
+  reason: completed
+  model_calls: 2
+  steps: 2
+  output_exact: 6 * 7 is 42.
+  tools:
+    - name: calculator
+      outcome: ok
+      attempts: 1
+      attempt_outcomes: [ok]
+      result_contains: "42"

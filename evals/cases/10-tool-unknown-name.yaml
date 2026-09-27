@@ -1,0 +1,23 @@
+id: tool-unknown-name
+description: >-
+  The model asks for a tool that does not exist. Nothing is executed, the error is fed
+  back, and the run degrades rather than crashing.
+config: default
+task: Do the thing.
+stub:
+  script:
+    - tool_calls:
+        - name: ghost
+          arguments:
+            anything: true
+    - text: I do not have that tool.
+expect:
+  status: degraded
+  failure_classes: [tool_error]
+  reason: completed
+  model_calls: 2
+  tools:
+    - name: ghost
+      outcome: not_executed
+      attempts: 1
+      error_contains: unknown_tool

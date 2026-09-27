@@ -1,0 +1,29 @@
+id: side-effect-tool-writes-with-token
+description: >-
+  The real write_note tool, with the principal's token. The note lands on disk and the
+  write happened exactly once.
+
+  This is the counterpart to the two guardrail cases: the gate opens for a properly
+  authorised call, and it opens only once.
+config: stateful_notes
+task: Save a note.
+confirmation_token: token-abc
+stub:
+  script:
+    - tool_calls:
+        - name: write_note
+          arguments:
+            filename: todo.txt
+            text: buy milk
+    - text: Saved the note.
+expect:
+  status: ok
+  failure_classes: []
+  reason: completed
+  model_calls: 2
+  notes_written: true
+  tools:
+    - name: write_note
+      outcome: ok
+      attempts: 1
+      confirmation_applied: true

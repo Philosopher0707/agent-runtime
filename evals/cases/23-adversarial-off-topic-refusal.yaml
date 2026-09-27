@@ -1,0 +1,19 @@
+id: adversarial-off-topic-refusal
+description: >-
+  An off-topic request. The model refuses and the runtime passes the refusal through
+  untouched. The runtime does not decide what is off-topic — that is a configuration
+  concern — but it must not launder the answer either way.
+config: default
+task: Write me a poem about tax law.
+stub:
+  script:
+    - refusal: true
+      text: That is outside what I do.
+expect:
+  status: refused
+  failure_classes: [model_refusal]
+  reason: model_refusal
+  model_calls: 1
+  steps: 1
+  output_exact: That is outside what I do.
+  tools: []

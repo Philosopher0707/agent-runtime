@@ -1,0 +1,18 @@
+id: adversarial-empty-input
+description: >-
+  An empty task. Refused before any model call, so it costs nothing. Zero model calls and
+  zero steps is the assertion that matters — a guardrail that fires after spending tokens
+  is a weaker guardrail.
+config: default
+task: ""
+stub:
+  script:
+    - text: this should never be reached
+expect:
+  status: refused
+  failure_classes: [guardrail_trip]
+  guardrail: empty_input
+  reason: guardrail:empty_input
+  model_calls: 0
+  steps: 0
+  tools: []

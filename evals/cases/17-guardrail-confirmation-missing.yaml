@@ -1,0 +1,37 @@
+id: guardrail-confirmation-missing
+description: >-
+  A mutating tool is called with no confirmation token from the caller. It is not executed
+  and the run is refused.
+
+  The model supplies a token of its own, and it is ignored: the model cannot authorise a
+  side effect, only the principal can. That is what makes this a validated field rather
+  than a prompt instruction.
+config: default
+task: Save a note.
+tools:
+  write_note:
+    side_effect: true
+    idempotent: false
+    optional: false
+stub:
+  script:
+    - tool_calls:
+        - name: write_note
+          arguments:
+            filename: a.txt
+            text: hello
+            confirmation_token: model-supplied
+    - text: Saved.
+expect:
+  status: refused
+  failure_classes: [guardrail_trip]
+  guardrail: confirmation_missing
+  reason: guardrail:confirmation_missing
+  model_calls: 1
+  notes_written: false
+  tools:
+    - name: write_note
+      outcome: not_executed
+      attempts: 1
+      confirmation_applied: false
+      error_contains: confirmation_required

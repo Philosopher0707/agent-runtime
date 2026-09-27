@@ -1,0 +1,19 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.pytest-tmp/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+
+# Run traces are a runtime artefact, not source. Keep the directory, drop the contents.
+.traces/*
+!.traces/.gitkeep
+
+# Notes written by the write_note tool in the worked examples.
+.notes/
+
+.env
+.env.local

@@ -1,0 +1,18 @@
+id: model-refusal-verbatim
+description: >-
+  A refusal is returned verbatim. Not rephrased, not retried, not softened into a partial.
+  A refusal is a feature, so the runtime keeps its exact words.
+config: default
+task: Tell me how to pick a lock.
+stub:
+  script:
+    - refusal: true
+      text: I can't help with that.
+expect:
+  status: refused
+  failure_classes: [model_refusal]
+  reason: model_refusal
+  model_calls: 1
+  steps: 1
+  output_exact: I can't help with that.
+  tools: []

@@ -1,0 +1,26 @@
+id: tool-malformed-repair-succeeds
+description: >-
+  A tool returns something that is not the shape it declared. One repair attempt is made,
+  and it succeeds. The malformed data is never passed downstream.
+config: default
+task: What is 6 * 7?
+tools:
+  calculator:
+    behaviour: malformed_then_ok
+stub:
+  script:
+    - tool_calls:
+        - name: calculator
+          arguments:
+            expression: "6 * 7"
+    - text: 6 * 7 is 42.
+expect:
+  status: ok
+  failure_classes: [tool_malformed]
+  reason: completed
+  model_calls: 2
+  tools:
+    - name: calculator
+      outcome: ok
+      attempts: 2
+      attempt_outcomes: [malformed, ok]

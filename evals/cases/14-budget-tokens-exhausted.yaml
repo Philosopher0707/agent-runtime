@@ -1,0 +1,19 @@
+id: budget-tokens-exhausted
+description: >-
+  The token bound is exceeded by the first model call. The bound is re-checked after every
+  call rather than only at the top of the next step, so a single expensive call cannot
+  overshoot unnoticed.
+config: default
+task: Say something.
+overrides:
+  budget:
+    max_tokens_total: 1
+stub:
+  script:
+    - text: Something.
+expect:
+  status: partial
+  failure_classes: [budget_exhausted]
+  reason: budget_exhausted:max_tokens_total
+  model_calls: 1
+  steps: 1

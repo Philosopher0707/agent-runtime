@@ -1,0 +1,36 @@
+id: context-overflow-summarises-oldest-first
+description: >-
+  A large tool result pushes the prompt past the soft threshold. Tool results are
+  summarised, oldest first — and the system prompt and the task survive untouched. The
+  trace records the evidence, so the claim is checkable rather than asserted.
+config: default
+task: Summarise the figures.
+overrides:
+  context:
+    max_prompt_tokens: 400
+    summarise_above_tokens: 120
+    summary_chars: 40
+  guardrails:
+    untrusted_max_chars: 2000
+tools:
+  calculator:
+    behaviour: huge
+stub:
+  script:
+    - tool_calls:
+        - name: calculator
+          arguments:
+            expression: "1 + 1"
+    - text: The figures are unremarkable.
+expect:
+  status: ok
+  reason: completed
+  model_calls: 2
+  steps: 2
+  system_prompt_present: true
+  summarised_results_min: 1
+  dropped_messages: 0
+  tools:
+    - name: calculator
+      outcome: ok
+      attempts: 1

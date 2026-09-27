@@ -1,0 +1,27 @@
+id: tool-timeout-optional-continues
+description: >-
+  An optional tool times out, is retried once with jittered backoff, times out again, and
+  the run continues without it. Degraded rather than partial: the run still finished.
+config: default
+task: What is 6 * 7?
+tools:
+  calculator:
+    behaviour: timeout
+stub:
+  script:
+    - tool_calls:
+        - name: calculator
+          arguments:
+            expression: "6 * 7"
+    - text: I could not compute that.
+expect:
+  status: degraded
+  failure_classes: [tool_timeout]
+  reason: completed
+  model_calls: 2
+  output_exact: I could not compute that.
+  tools:
+    - name: calculator
+      outcome: timeout
+      attempts: 2
+      attempt_outcomes: [timeout, timeout]
