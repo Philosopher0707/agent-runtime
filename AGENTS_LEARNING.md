@@ -943,3 +943,59 @@ fixture that still replays proves the runtime still does what it did.
 
 *Lesson: before designing a rule, check whether the system already implies it. This one needed
 writing down, not building.*
+
+### 2026-09-27 — Three observations, and the question behind each
+
+**L66. "This reference might go stale" is the wrong question. "Is it checked?" is the right
+one.**
+
+The observation: the README recommends `0002`, `0006` and `0009` as *the three that shape
+everything else*, and with 0020 referenced in 0009's body a reader might ask whether 0020
+supersedes part of it. The suggestion was to annotate the relationship, or trust the append-only
+log — "either is defensible; the current state is silent".
+
+Both options were worse than the actual fix. **Those three citations were bare backticks, not
+links**, so the doc-link check did not cover them at all. A renamed or superseded decision could
+rot in the README — the first file anyone reads — and nothing would notice.
+
+Making them links does both jobs: it puts them under the check that already exists, *and* it
+makes the reference navigable so a reader can see the addendum for themselves.
+
+*Lesson: when the concern is "this might go stale", the useful question is not "should we
+annotate it?" but "is anything checking it?". Annotation is a note; a link is a check.*
+
+**L67. One command in the gate list was not self-explanatory, and the fix was four lines.**
+
+`make rollback REV=<sha>` sat in the command list with a five-word comment. Three fair
+questions had no answer in the README: what "through the gates" means operationally, whether it
+touches the trace store, and whether `REV` is required. All three were answerable from the code
+and from decision 0013 — and none of them was *written* anywhere a reader would look.
+
+Four lines now: it reverts the repository and not the trace store (gitignored, so the traces
+stay and `run_started.revision` sorts them), `REV` is required with no default, and "through the
+gates" means `make ci` locally before the push and again in CI on the pull request.
+
+And a tripwire: **every `make <target>` the README names must exist in the Makefile.** The
+README is the first thing anyone runs, which makes it the most expensive place for a reference
+to rot.
+
+**L68. A reading list becomes a menu, and the fix is to order it by role rather than by file.**
+
+Four docs plus `decisions/` is five destinations and no ordering, so the reader triages. The
+list is now grouped by *what you are trying to do* — understand why, work on it, parse a trace,
+know where it is going — rather than by which file exists.
+
+Role headings do not go stale as the file count grows, which is the same reason
+`docs/roadmap.md` says "run `make ci` for the current counts" instead of naming a number.
+
+**L69. And the non-vacuity guard caught my own regex bug within a minute of being written.**
+
+`test_the_readme_names_some_targets` asserts the pattern finds at least five targets. It failed
+immediately: `MAKE_TARGET` was missing `re.MULTILINE`, so `^` matched only at the start of the
+file and the check found almost nothing. The check would have passed vacuously forever.
+
+That is the third time this session a guard-on-the-guard has caught something real — and the
+first time it caught the guard itself.
+
+*Lesson: the assertion that a check found something is not ceremony. A pattern that silently
+matches nothing looks exactly like a pattern that finds nothing wrong.*

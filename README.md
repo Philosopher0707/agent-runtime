@@ -28,6 +28,20 @@ make smoke            # boots the service, POSTs one run, asserts 200 + schema
 make rollback REV=<sha>   # revert back to a revision, through the gates
 ```
 
+`make rollback` is the one command above that is not self-explanatory. Precisely:
+
+- **It reverts the repository, not the trace store.** `.traces/` is gitignored, so a rollback
+  leaves every trace exactly where it was — and `run_started.revision` is what lets you sort
+  them by build afterwards.
+- **`REV` is required.** There is no default, because a rollback to a guessed revision is worse
+  than a rollback that refuses to start.
+- **"Through the gates" means twice.** `make ci` runs locally on the revert branch *before*
+  anything is pushed; the pull request then gets the required `gates` check, which runs it again
+  in CI. Nothing reaches `main` without passing both.
+
+[decisions/0013](docs/decisions/0013-rollback-scope.md) has the reasoning, including why it is a
+revert commit rather than a force-push.
+
 **Two eval suites, because they test different things.** `make eval` asserts *exact* outcomes
 against a scripted model — it is the runtime's contract test, deterministic, and it gates CI.
 `make live` asserts *properties* against a real model — status, which tools were called,
@@ -159,20 +173,30 @@ docs/         architecture, the roadmap, and the decision record
 
 ## Where to read next
 
-- `AGENTS_LEARNING.md` — what this project has taught us: the surprises, the mistakes, and
-  the questions still open. Append a dated entry when you learn something that would change
-  your next move.
-- `docs/roadmap.md` — where this is going, in dependency order, and what it deliberately is
-  not.
-- `docs/trace-schema.md` — the trace format, event by event, and the invariants that make
-  replay exact. Read this before writing anything that parses a trace.
-- `docs/architecture.md` — the component map, the authority boundaries, and the
-  invariants with the tests that hold them.
-- `docs/decisions/` — one file per decision, numbered, append-only. Read
-  `0002` (status precedence), `0006` (untrusted content), and `0009` (the trust model)
-  for the three that shape everything else.
-- `configs/` — four worked examples, from the smallest complete configuration to the
-  real provider.
+**To understand why it is built this way.** [docs/architecture.md](docs/architecture.md) — the
+component map, the authority boundaries, and the invariants with the tests that hold them. Then
+the four decisions that shape everything else:
+
+- [0002 — status precedence](docs/decisions/0002-status-precedence.md)
+- [0006 — untrusted content](docs/decisions/0006-untrusted-content-policy.md)
+- [0009 — the trust model](docs/decisions/0009-trust-model.md), and the addendum naming the
+  second axis it deliberately does not cover
+- [0020 — auth is the deployer's boundary](docs/decisions/0020-auth-is-the-deployers-boundary.md)
+
+**To work on it.** [AGENTS_LEARNING.md](AGENTS_LEARNING.md) is what the project has taught us —
+the surprises, the mistakes, the questions still open. Read it before changing anything; it is
+the fastest way to avoid re-learning a lesson. Append a dated entry when you learn something
+that would change your next move. [configs/](configs/) is four worked examples, from the
+smallest complete configuration to the real provider.
+
+**To parse a trace.** [docs/trace-schema.md](docs/trace-schema.md) — the envelope, every event,
+and the invariants that make replay exact. Read it before writing anything that reads a trace.
+
+**To know where it is going.** [docs/roadmap.md](docs/roadmap.md), in dependency order, and what
+it deliberately is not.
+
+**The rest.** [docs/decisions/](docs/decisions/) — one file per decision, numbered, append-only.
+Read by number; the log makes supersession visible.
 
 ## Known limitations
 

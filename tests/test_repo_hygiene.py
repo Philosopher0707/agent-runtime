@@ -115,3 +115,61 @@ def test_the_link_check_is_not_vacuous() -> None:
         f"only {total} internal links found across {len(markdown_files())} docs — the pattern "
         f"has probably drifted and the link check is now vacuous"
     )
+
+
+# ------------------------------------------------- references that have to stay true
+
+
+#: `make <target>` in a code block or inline code. Deliberately not a bare `\bmake (\w+)`:
+#: "the invariants that make replay exact" is prose, not a target. MULTILINE matters — without
+#: it `^` only matches at the start of the file and the check finds almost nothing.
+MAKE_TARGET = re.compile(r"^\s*make ([a-z][a-z-]+)|`make ([a-z][a-z-]+)", re.MULTILINE)
+MAKEFILE_TARGET = re.compile(r"^([a-z][a-z-]+):", re.MULTILINE)
+DECISION_ID = re.compile(r"\b0\d{3}\b")
+MARKDOWN_LINK = re.compile(r"\[[^\]]*\]\([^)]*\)")
+
+
+def makefile_targets() -> set[str]:
+    return set(MAKEFILE_TARGET.findall((REPO_ROOT / "Makefile").read_text(encoding="utf-8")))
+
+
+def readme_make_targets() -> set[str]:
+    found = MAKE_TARGET.findall(README_MD.read_text(encoding="utf-8"))
+    return {first or second for first, second in found}
+
+
+def test_the_readme_names_some_targets() -> None:
+    assert len(readme_make_targets()) >= 5, "the pattern has drifted and now proves nothing"
+
+
+def test_every_make_target_the_readme_names_exists() -> None:
+    """A README documenting a target the Makefile does not have sends people to a failure.
+
+    The README is the first thing anyone runs, so this is the most expensive place for a
+    reference to rot.
+    """
+    missing = readme_make_targets() - makefile_targets()
+    assert not missing, (
+        f"the README names make targets that do not exist: {sorted(missing)}. Either add them "
+        f"to the Makefile or fix the README."
+    )
+
+
+def test_every_decision_the_readme_cites_is_linked() -> None:
+    """A bare `0002` is a reference nothing checks.
+
+    The link check covers *links*. A backticked decision id is invisible to it, so a renamed
+    or superseded decision can rot in the README silently — and the README is where a new
+    reader starts. Linking the citation puts it under the check that already exists.
+    """
+    text = README_MD.read_text(encoding="utf-8")
+    spans = [match.span() for match in MARKDOWN_LINK.finditer(text)]
+    bare = [
+        match.group()
+        for match in DECISION_ID.finditer(text)
+        if not any(start <= match.start() and match.end() <= end for start, end in spans)
+    ]
+    assert not bare, (
+        f"the README cites {sorted(set(bare))} without linking — a bare id is unchecked. Use "
+        f"[0002](docs/decisions/0002-....md)."
+    )
