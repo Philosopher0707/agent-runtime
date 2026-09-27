@@ -8,7 +8,7 @@ document** — edit it as the plan changes. What actually happened belongs in
 
 The runtime is complete against the spec: a bounded loop, a tool boundary with a
 confirmation gate, four enforced budget bounds, replayable traces, a tiered injection
-guardrail, redaction, a golden set, and CI that `main` requires. 271 tests, 33 eval cases,
+guardrail, redaction, a golden set, and CI that `main` requires. 241 tests, 33 eval cases,
 two merged PRs, `main` protected.
 
 **And nothing in it has met real data.** Every eval case is stub-driven. A stub is a
