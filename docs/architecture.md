@@ -87,6 +87,7 @@ returns nothing, and every vendor string lives in `providers/`.
 | A trace says which format it is | `TRACE_SCHEMA_VERSION` on every line; `read_trace` refuses an unknown one | `test_trace.py` |
 | A declared cost bound can actually bind | `Configuration` refuses a costed provider with no prices | `test_config.py` |
 | Every entry point loads `.env` | enumerated by test, not remembered | `test_env_file.py` |
+| A prompt change names *which* part moved | `context/fingerprint.py`, recorded in `run_started` | `test_fingerprint.py` |
 
 ## The trust model
 

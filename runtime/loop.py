@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
 from context.assembler import ContextAssembler, ContextUnfit
+from context.fingerprint import fingerprint
 from context.sanitize import assess, leaks_system_prompt, wrap_untrusted
 from providers.base import Provider, ProviderError, prompt_hash
 from runtime.budget import Budget, BudgetExceeded
@@ -129,6 +130,9 @@ class _Orchestrator:
             provider_name=self.provider.name,
             model=self.provider.model,
             tools=self._descriptors,
+            prompt_fingerprint=fingerprint(
+                system_prompt=self.config.system_prompt, tools=self._descriptors
+            ).as_dict(),
         )
 
         preflight = self._preflight()

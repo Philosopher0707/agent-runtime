@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -123,6 +123,7 @@ class TraceWriter:
         provider_name: str,
         model: str,
         tools: Sequence[ToolDescriptor] = (),
+        prompt_fingerprint: Mapping[str, str] | None = None,
     ) -> None:
         """Record the task, the *whole* configuration, and the tool set as it was.
 
@@ -138,6 +139,11 @@ class TraceWriter:
 
         Dumped by alias, so the config block is a valid config file body — you can
         copy it out of a trace and load it.
+
+        ``prompt_fingerprint`` names the stable parts of the prompt, each hashed, plus their
+        combined identity — see ``context/fingerprint.py``. The per-step ``prompt_hash``
+        remains the authority on *whether* a prompt changed; this says *which part* did,
+        which is the question a person asks.
         """
         self.emit(
             "run_started",
@@ -148,6 +154,7 @@ class TraceWriter:
                 "provider": provider_name,
                 "model": model,
                 "tools": [descriptor.model_dump(mode="json") for descriptor in tools],
+                "prompt_fingerprint": dict(prompt_fingerprint or {}),
             },
         )
 

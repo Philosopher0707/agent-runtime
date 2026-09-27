@@ -717,3 +717,54 @@ prices and varying only the one field under test.
 That is the third time this session a fix has failed tests that were passing for the wrong
 reason (see L45). The pattern is consistent enough to name: **a test that constructs a fixture
 the production code would reject is testing a world that does not exist.**
+
+### 2026-09-27 — The prompt had no name
+
+**L51. A good proposal had an unstated prerequisite, and finding it was the whole job.**
+
+The proposal: a prompt registry with immutable versions, movable tags, semantic versioning and
+canary splits. Correct in shape, and better than what I had offered.
+
+But it assumes a prompt is a *document*. Here it is not, and I checked rather than assuming —
+one character added to any of these moves the same single hash:
+
+| component | lives in |
+|---|---|
+| the system prompt | `configs/<name>.yaml` |
+| the tool schemas | `tools/`, via their descriptors |
+| the untrusted envelope | `context/sanitize.py` |
+| the tool-call renderer | `context/assembler.py` |
+
+**Four sources, two of them Python source, one hash.** A registry of prompt documents would
+version one of four inputs and disagree with the hash — and the hash is what replay verifies.
+So the registry would have been built on a false identity.
+
+*Lesson: when a design assumes "the X is a thing", check whether X is one thing. "Version the
+prompt" is easy to agree with and impossible to do until the prompt has a name.*
+
+**L52. The reviewer's proposal improved a decision I had already made.**
+
+Prompt rollback as a *tag move* is better than what decision 0013 specifies. `git revert` goes
+through the protected flow — a commit, a CI run, a merge — and reverts everything in the
+commit. A tag move reverts exactly the prompt, with no commit at all, and it is closer to the
+spec's *"one command, performed once before you need it"* than a revert is.
+
+Recorded in 0016 as the thing to revisit when a registry exists.
+
+*Lesson: a proposal from outside is worth evaluating for what it says about work already
+shipped, not only for whether to adopt it. This one is a better answer to a question I had
+already closed.*
+
+**L53. What I built instead is the cheap 80%.**
+
+`context/fingerprint.py` hashes the four stable components separately, combines them into an
+identity, and records it in `run_started`. A prompt change now reports **which** part moved
+rather than "the hash differs". The per-step `prompt_hash` is untouched — it stays the
+authority on *whether*, because replay depends on it — and a test asserts that adding a
+diagnosis did not move it.
+
+That is the same instinct as decision 0005's two token ratios and decision 0011's marker
+tiers: **split a number that is doing two jobs into the two numbers it is actually made of.**
+
+*Lesson: when a single value cannot answer a question people keep asking, the fix is usually
+not a bigger system around it. It is decomposing the value.*

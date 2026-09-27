@@ -113,6 +113,9 @@ else.
   Replay verifies each rebuilt prompt hash and never executes a tool. Every line carries a
   schema version, so a trace written by an older format is refused by name rather than
   reported as a divergence.
+- **A prompt change says which part moved.** The prompt is four things — system prompt, tool
+  schemas, untrusted envelope, tool-call renderer — across four files, two of them code. Each
+  is hashed separately and recorded, so a change is a diagnosis rather than "the hash differs".
 - **The prompt is never redacted; the trace can be.** Redacting the prompt would silently
   change the task. A redacted trace cannot be replayed, so the two are mutually exclusive —
   which is stated in the design rather than discovered later.
