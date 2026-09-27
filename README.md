@@ -28,25 +28,10 @@ make smoke            # boots the service, POSTs one run, asserts 200 + schema
 make rollback REV=<sha>   # revert back to a revision, through the gates
 ```
 
-`make rollback` is the one command above that is not self-explanatory. Precisely:
-
-- **It reverts the repository, not the trace store.** `.traces/` is gitignored, so a rollback
-  leaves every trace exactly where it was — and `run_started.revision` is what lets you sort
-  them by build afterwards.
-- **It does not restart anything.** A run already in flight finishes on the code it loaded, and
-  its trace records *that* revision — which stays resolvable, because a revert commit preserves
-  the history it reverts rather than deleting it
-  (`test_rollback.py::test_the_revert_does_not_rewrite_history`). The revision is resolved once
-  per process, so what a trace records is the code the process **loaded**, not the current
-  working tree. That is the fact you want when asking what produced a run.
-- **`REV` is required.** There is no default, because a rollback to a guessed revision is worse
-  than a rollback that refuses to start.
-- **"Through the gates" means twice.** `make ci` runs locally on the revert branch *before*
-  anything is pushed; the pull request then gets the required `gates` check, which runs it again
-  in CI. Nothing reaches `main` without passing both.
-
-[decisions/0013](docs/decisions/0013-rollback-scope.md) has the reasoning, including why it is a
-revert commit rather than a force-push.
+`make rollback REV=<sha>` is the one command above that is not self-explanatory: it changes what
+the code *is*, rather than what it does. [decisions/0013](docs/decisions/0013-rollback-scope.md)
+covers what it touches (the repository, not the trace store), what it does not (restart
+anything), why `REV` has no default, and what "through the gates" means.
 
 **Two eval suites, because they test different things.** `make eval` asserts *exact* outcomes
 against a scripted model — it is the runtime's contract test, deterministic, and it gates CI.
@@ -154,6 +139,10 @@ else.
 - **A declared bound has to be able to bind.** All four budget bounds are required, and a
   configuration whose cost bound cannot fire — prices unset, so cost is pinned at zero — is
   refused at load rather than reporting safety it does not provide.
+- **The documentation's claims about the code are checked.** Every internal link, every `make`
+  target the README names, every decision id it cites, and every test name it cites must
+  resolve. A cited test reads as evidence, and evidence that does not exist is worse than none —
+  it stops the reader looking.
 
 ## Adding a capability
 
