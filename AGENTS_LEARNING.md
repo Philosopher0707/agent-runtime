@@ -312,3 +312,43 @@ The remaining gaps (PII handling, rollback) and the unverified claims (no real m
 live endpoint) are now checkable by CI rather than by me remembering. That is the whole
 point of having done this first: it converts *"I ran it"* into *"it runs"*, and it is the
 precondition the spec named before any of the other work could be called done.
+
+### 2026-09-27 — Published to GitHub, and the gates ran on a machine that is not mine
+
+**L22. The thing most likely to break on a clean machine was the thing I had already
+fixed, and the first CI run is what proves it.**
+
+`ci #1` passed on `ubuntu-latest` — `install` (`uv sync --frozen`) and `gates`
+(`make ci`) both green, on a runner whose `python3` is not 3.13. That is the direct
+evidence for L16: had the Makefile still pinned `UV_PYTHON` to `command -v python3`, this
+first run would have failed for a reason that has nothing to do with the code, and the
+failure would have looked like the project being broken rather than a local convenience
+default being non-portable.
+
+*Lesson: "it works on my machine" is testable, and the test is cheap once CI exists. Do
+the portability fix and the CI that proves it in the same step, or the fix stays a claim.*
+
+**L23. `gh` was not installed, but its credential was — and the credential was what
+mattered.**
+
+The binary was gone; `~/.config/gh/hosts.yml` remained, recording the account but no
+token, because the token lives in the OS keychain. I verified it with a single read-only
+API call (`/user`) before assuming anything, checked the scopes it carried, and used it
+through a one-shot credential helper so it never reached `.git/config`, a remote URL, or a
+command line.
+
+*Lesson: check for the capability before reporting its absence. "The tool is missing" and
+"the capability is missing" are different statements, and only the second one is a blocker.*
+
+**L24. What I asked before acting, and what I did not.**
+
+I asked two questions — repository visibility and name — and decided everything else
+myself. Visibility is the one with a consequence I cannot undo: a private repo can be made
+public in one click, while public content may already have been scraped. The name was
+cheap but genuinely ambiguous, since the local directory is called "general purpose" and
+that is not a valid repository name. Everything else — which credential to use, how to
+authenticate the push, the description, the topics — was mine to decide, and asking about
+it would have been noise.
+
+*Lesson: ask about the decisions that are hard to reverse or genuinely ambiguous, and
+decide the rest. A question is not a courtesy; it costs the other person a turn.*

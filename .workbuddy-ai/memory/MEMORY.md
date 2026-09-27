@@ -80,4 +80,10 @@ named in `runtime/factory.py` and nowhere else.
 
 Managed Python 3.13.12 and `uv` live outside the repo
 (`~/.workbuddy-ai/binaries/python/envs/default/bin/uv`). `uv sync --all-extras` creates
-`.venv` inside the project. `make check`/`eval`/`smoke` are the three gates.
+`.venv` inside the project. `make ci` is the single gate (`lock-check check eval markers
+smoke`), and CI runs it on every push.
+
+Remote: `https://github.com/Philosopher0707/agent-runtime` (private). `gh` is not installed
+on this machine, so use the API directly for repo operations; the OAuth token is in the OS
+keychain, and `git push` works through the configured `osxkeychain` helper. Never write a
+token into `.git/config` or a remote URL.
