@@ -425,3 +425,71 @@ about the same thing: nothing here has met real data. No real model, no live end
 real traces. The corpus work (L10–L14) and the CI (L15–L22) were both about replacing belief
 with measurement; the next unknown in that line is the first one that cannot be answered
 from inside this repository.
+
+### 2026-09-27 — Public, and the check became a requirement
+
+**L30. Branch protection was a plan limit, not a configuration mistake — and the instruction
+to go public is what unlocked it.**
+
+On a *private* repo with GitHub Free, both classic protection and rulesets return
+`403 — Upgrade to GitHub Pro or make this repository public`. So for two turns the CI was
+running and could not require anything. The distinction is worth keeping straight:
+
+| | before | after |
+|---|---|---|
+| the check runs on every PR | yes | yes |
+| merging without it | possible | **rejected** |
+
+Nothing about the CI changed. What changed is that it now *requires* something. A check that
+is displayed is information; a check that is required is a gate.
+
+*Lesson: when a capability returns a permission error, read the message before working
+around it. "Upgrade to X or change Y" is a fork in the road, not a dead end — and here the
+cheaper branch was a one-line setting the user had already been asked about.*
+
+**L31. Making a repository public is a one-way door, so it got an audit first.**
+
+The audit found nothing: no secret-shaped strings, no real values in `.env.example`, no
+absolute home paths. But it did surface something the audit was not looking for —
+`.workbuddy-ai/memory/` was 322 lines of *agent session notes* that would have been published
+alongside the project. I had flagged it earlier and never got a decision, so before a
+one-way action I took the conservative default: untracked it, left it on disk, and said so.
+
+*Lesson: an audit that only looks for secrets finds only secrets. Ask separately "what else
+is in here that was never meant for an audience?" — the answer here was scratch, not
+credentials.*
+
+**L32. The gate was verified by trying to break it.**
+
+Pushing a probe commit straight to `main` returned:
+
+```
+remote: error: GH006: Protected branch update failed for refs/heads/main.
+remote: - Required status check "gates" is expected.
+```
+
+The probe was then undone without `--hard` and the tree confirmed clean.
+
+This is the same discipline as breaking each gate in L17: **a protection you have not tried
+to bypass is a setting, not a guarantee.** The failure mode being guarded against — a
+protection that looks configured and silently does not apply — is invisible from the
+configuration screen and obvious from one rejected push.
+
+**L33. Untracking is not unpublishing.**
+
+Removing the memory files from the tip does not remove them from the earlier commits. Anyone
+who browses this repository's history can still read them; only a history rewrite and a
+force-push would change that, and that is a destructive operation on a repository that now
+has a public URL.
+
+Left as a stated residual rather than fixed, because the content is harmless (engineering
+notes, no credentials) and the fix costs more than the problem. The general point stands:
+*removing a file from a repository is a two-part problem, and the second part is the one
+people forget.*
+
+**L34. The workflow now constrains me, which is the point.**
+
+`main` requires the `gates` check with `enforce_admins: true`, so this very commit — a
+documentation change — cannot be pushed directly. It goes through a branch and a PR like
+everything else. That is a real cost in turns and it is the correct trade: the rule applies
+to the person who wrote it, or it is not a rule.
