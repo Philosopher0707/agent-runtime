@@ -187,3 +187,61 @@ def test_every_entry_point_loads_the_env_file(path: Path) -> None:
         f"{path.relative_to(REPO_ROOT)} has a __main__ block but never calls load_env_file(), "
         f"so a key placed in .env would be silently ignored when it is run"
     )
+
+
+# ------------------------------------------------ the drift guard on the template
+
+
+def advertised_variables() -> set[str]:
+    """Names ``.env.example`` offers, whether commented out or not."""
+    names = set()
+    for line in (REPO_ROOT / ".env.example").read_text(encoding="utf-8").splitlines():
+        stripped = line.strip().lstrip("#").strip()
+        key, separator, _ = stripped.partition("=")
+        if separator and key and key.replace("_", "").isalpha() and key.isupper():
+            names.add(key)
+    return names
+
+
+def variables_the_code_reads() -> set[str]:
+    """Names the code actually looks up, from ``os.environ`` or a provider's key field."""
+    import re
+
+    pattern = re.compile(r'environ(?:\.get\(|\[)\s*"([A-Z_][A-Z0-9_]*)"|api_key_env:\s*([A-Z_]+)')
+    found: set[str] = set()
+    for path in sorted(REPO_ROOT.rglob("*")):
+        if path.suffix not in {".py", ".yaml"} or set(path.parts) & {".venv", ".pytest-tmp"}:
+            continue
+        for match in pattern.finditer(path.read_text(encoding="utf-8")):
+            found.add(match.group(1) or match.group(2))
+    return found
+
+
+def test_the_template_advertises_something() -> None:
+    assert advertised_variables(), "the search found nothing, so it proves nothing"
+
+
+def test_the_template_only_advertises_variables_the_code_reads() -> None:
+    """The defect that prompted this file, guarded.
+
+    ``.env.example`` listed six variables nothing read — AGENT_BASE_URL, AGENT_MODEL,
+    AGENT_PRICE_INPUT_PER_MTOK, AGENT_PRICE_OUTPUT_PER_MTOK, AGENT_PROVIDER and
+    AGENT_TRACE_DIR — so setting them did nothing, silently. A template that offers a name
+    the code ignores is worse than no template, because it answers the question wrongly.
+    """
+    unread = advertised_variables() - variables_the_code_reads()
+    assert not unread, (
+        f".env.example advertises variables nothing reads: {sorted(unread)}. Either wire "
+        f"them up, or remove them — a name in this file is a promise that setting it does "
+        f"something."
+    )
+
+
+def test_the_template_is_kept_out_of_version_control_when_copied() -> None:
+    """`.env` holds a secret; the template does not, and they must stay distinguishable."""
+    import subprocess
+
+    result = subprocess.run(
+        ["git", "check-ignore", ".env"], cwd=REPO_ROOT, capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 0, ".env is not gitignored"
