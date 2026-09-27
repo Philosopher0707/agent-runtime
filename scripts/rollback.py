@@ -105,6 +105,23 @@ def require_clean_tree(*, root: Path = REPO_ROOT) -> None:
         )
 
 
+def ensure_branch_free(branch: str, *, root: Path = REPO_ROOT) -> None:
+    """Refuse if a rollback branch is already present.
+
+    Found by performing the rollback once. A run interrupted part-way — after the branch
+    was created and the revert committed, before the push — leaves that branch behind. A
+    second run would then plan from the *new* HEAD, treat the previous revert as a commit
+    to revert, and quietly produce the opposite of what was asked for. Refusing is the only
+    safe answer; the operator can merge it, delete it, or resume by hand.
+    """
+    if git("rev-parse", "--verify", "-q", f"refs/heads/{branch}", root=root, check=False):
+        raise RollbackError(
+            f"branch {branch!r} already exists. A previous rollback to this revision is "
+            f"either still open or was abandoned part-way. Merge it, delete it, or resume "
+            f"it by hand — re-running here would plan the revert as something to revert."
+        )
+
+
 def pull_request_url(plan_: Plan, *, root: Path = REPO_ROOT) -> str:
     remote = git("remote", "get-url", "origin", root=root)
     slug = remote.removesuffix(".git").split("github.com", 1)[-1].lstrip(":/")
@@ -122,9 +139,16 @@ def main(argv: list[str] | None = None) -> int:
     try:
         plan_ = plan(args.target, root=root)
         if args.dry_run:
+            # A dry run is for inspecting the plan, so it reports even when the branch is
+            # in the way — but it says so, because the plan is not actionable as it stands.
             print(plan_.describe())
+            if git(
+                "rev-parse", "--verify", "-q", f"refs/heads/{plan_.branch}", root=root, check=False
+            ):
+                print(f"\nnote: branch {plan_.branch!r} already exists, so this plan cannot run.")
             return 0
         require_clean_tree(root=root)
+        ensure_branch_free(plan_.branch, root=root)
     except RollbackError as exc:
         print(f"rollback refused: {exc}", file=sys.stderr)
         return 1

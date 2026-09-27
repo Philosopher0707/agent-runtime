@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.rollback import Plan, RollbackError, plan, require_clean_tree
+from scripts.rollback import Plan, RollbackError, ensure_branch_free, plan, require_clean_tree
 
 
 def run(*args: str, cwd: Path) -> str:
@@ -122,6 +122,25 @@ def test_an_untracked_file_also_counts_as_dirty(repo: Path) -> None:
 
 def test_a_clean_tree_is_accepted(repo: Path) -> None:
     require_clean_tree(root=repo)
+
+
+def test_an_existing_rollback_branch_is_refused(repo: Path) -> None:
+    """Found by performing the rollback once, and it is the dangerous case.
+
+    A run interrupted after the revert but before the push leaves its branch behind. A
+    second run would plan from the new HEAD and treat the previous revert as a commit to
+    revert — producing the opposite of what was asked for, silently.
+    """
+    target = head(repo, offset=2)
+    result = plan(target, root=repo)
+    run("branch", result.branch, cwd=repo)
+
+    with pytest.raises(RollbackError, match="already exists"):
+        ensure_branch_free(result.branch, root=repo)
+
+
+def test_a_free_branch_name_is_accepted(repo: Path) -> None:
+    ensure_branch_free("rollback/to-nothing", root=repo)
 
 
 # ------------------------------------------------------------------- what it does

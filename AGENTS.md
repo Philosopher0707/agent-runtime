@@ -146,6 +146,7 @@ honestly — "it did not work, here is what I ruled out" is a complete answer.
 - `AGENTS_LEARNING.md` — what this project taught us, and what we still do not know.
   Append a dated entry whenever you learn something that would change your next move.
 - `docs/architecture.md` — component map and the reasoning behind the boundaries above.
+- `docs/roadmap.md` — where this is going, in dependency order.
 - `docs/decisions/` — one file per architectural decision, numbered, append-only.
 - `configs/` — worked examples. The fastest way to understand the design.
 - `evals/cases/` — what we currently believe the agent should do.
