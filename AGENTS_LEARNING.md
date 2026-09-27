@@ -550,3 +550,37 @@ and point at `make ci`.
 *Lesson: when a document states a fact that code can produce, the document should say how to
 produce it. This is the same reasoning as "never quote a count from memory", applied to a
 file instead of a sentence.*
+
+### 2026-09-27 — The API key had nowhere to go
+
+**L39. `.env.example` and a `.gitignore` entry implied a convention that nothing
+implemented.**
+
+The repository had `.env.example` with a blank `AGENT_API_KEY=`, `.gitignore` listing
+`.env`, and a README saying configuration comes from the environment. **Nothing read
+`.env`.** So the obvious path — copy the example, fill in the key — put the secret somewhere
+the runtime never looked, and the provider was called unauthenticated. The only symptom
+would have been a 401 from the vendor, with nothing in it pointing at the cause.
+
+It surfaced because someone asked "where do I put the API key?" and I checked the code
+instead of answering from memory. I had written that `.env.example` myself, and had
+described it as "kept current".
+
+*Lesson: a configuration file that nothing reads is worse than no configuration file,
+because it answers the question wrongly and the failure is silent. The audit question is not
+"is this documented?" but "is this implemented, and does it fail loudly when it is not?"*
+
+**L40. The fix needed a drift guard, because the defect was a missing call in N places.**
+
+`.env` is loaded by each entry point — the CLI, the service, and four scripts. Six places
+that must each remember, and forgetting in any one of them is silent. So the test enumerates
+every Python file with a `__main__` block and asserts each one calls `load_env_file()`. A
+new script that forgets fails the suite, and the assertion message says why.
+
+That is the same shape as the CI contract test (L15–L18) and the entry-point enumeration is
+the same trick as the taxonomy coverage test: **when correctness depends on remembering
+something in N places, enumerate the places in a test rather than relying on the list being
+remembered.**
+
+*Lesson: "load the config" is not a step, it is a precondition. A precondition that each of
+six files must independently satisfy is a defect waiting for the seventh file.*

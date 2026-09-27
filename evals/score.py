@@ -15,6 +15,7 @@ from pathlib import Path
 
 from evals.judge import JUDGE_SCORER
 from evals.runner import CaseResult, run_all
+from runtime.config import load_env_file
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CASES_DIR = REPO_ROOT / "evals" / "cases"
@@ -23,6 +24,7 @@ WORK_DIR = REPO_ROOT / ".traces" / "evals"
 
 
 def main() -> int:
+    load_env_file()
     threshold = float(os.environ.get("EVAL_THRESHOLD", "1.0"))
     if WORK_DIR.exists():
         shutil.rmtree(WORK_DIR)

@@ -17,6 +17,7 @@ from pathlib import Path
 
 import httpx
 
+from runtime.config import load_env_file
 from runtime.schemas import HealthResponse, RunOutput
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -45,6 +46,7 @@ def wait_for_health(client: httpx.Client, url: str, deadline: float) -> HealthRe
 
 
 def main() -> int:
+    load_env_file()
     port = free_port()
     env = {
         **os.environ,

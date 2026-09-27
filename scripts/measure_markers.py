@@ -18,6 +18,7 @@ from pathlib import Path
 
 from context.sanitize import assess
 from evals.markers import Assessment, measure, measure_repo, render
+from runtime.config import load_env_file
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -85,6 +86,7 @@ def render_ablation(result: Ablation) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    load_env_file()
     parser = argparse.ArgumentParser(description="Measure the injection-marker rule.")
     parser.add_argument("--repo", action="store_true", help="also sweep this repository")
     parser.add_argument("--quiet", action="store_true", help="thresholds only")

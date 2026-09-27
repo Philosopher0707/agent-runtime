@@ -29,6 +29,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from runtime.config import load_env_file
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -129,6 +131,7 @@ def pull_request_url(plan_: Plan, *, root: Path = REPO_ROOT) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    load_env_file()
     parser = argparse.ArgumentParser(description="Roll back to an earlier revision.")
     parser.add_argument("--to", dest="target", required=True, help="revision to match again")
     parser.add_argument("--dry-run", action="store_true", help="show the plan, change nothing")
