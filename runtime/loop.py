@@ -101,6 +101,7 @@ class _Orchestrator:
         budget: Budget | None,
         confirmation_token: str | None,
         clock: Callable[[], float],
+        revision: str | None = None,
     ) -> None:
         self.task = task
         self.config = config
@@ -109,6 +110,10 @@ class _Orchestrator:
         self.tracer = tracer
         self.clock = clock
         self.confirmation_token = confirmation_token
+        #: Which build produced this run. Recorded, never used: the loop makes no decision
+        #: from it. It exists so that after a rollback you can tell which traces came from
+        #: the code that was rolled back.
+        self.revision = revision
         self.budget = budget or Budget.from_config(config.budget, clock=clock)
         self.started = clock()
         self.state = _State()
@@ -133,6 +138,7 @@ class _Orchestrator:
             prompt_fingerprint=fingerprint(
                 system_prompt=self.config.system_prompt, tools=self._descriptors
             ).as_dict(),
+            revision=self.revision,
         )
 
         preflight = self._preflight()
@@ -589,6 +595,7 @@ def run(
     budget: Budget | None = None,
     confirmation_token: str | None = None,
     clock: Callable[[], float] = time.monotonic,
+    revision: str | None = None,
 ) -> RunOutput:
     """Run one task to a terminal status. Never raises for a task-level problem.
 
@@ -604,6 +611,7 @@ def run(
         budget=budget,
         confirmation_token=confirmation_token,
         clock=clock,
+        revision=revision,
     ).run()
 
 

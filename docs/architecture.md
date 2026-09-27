@@ -89,6 +89,8 @@ returns nothing, and every vendor string lives in `providers/`.
 | Every entry point loads `.env` | enumerated by test, not remembered | `test_env_file.py` |
 | A prompt change names *which* part moved | `context/fingerprint.py`, recorded in `run_started` | `test_fingerprint.py` |
 | The runtime reproduces recorded real runs | `runtime/replay.py` over committed fixtures | `test_recorded_runs.py` |
+| A trace says which build produced it | `current_revision()` recorded in `run_started` | `test_revision.py` |
+| The service is not reachable off-host by default | `AGENT_HOST` defaults to loopback | `test_service.py` |
 
 ## The trust model
 
@@ -177,9 +179,11 @@ Stated rather than discovered later:
   tool output. The envelope, not the scan, is the primary defence.
 - **`confirmation_token` is a presence check, not a capability.** It stops the *model* from
   authorising a side effect, which it does structurally. It does **not** authenticate the
-  caller: `POST /run` has no auth, so anyone who can reach the port can pass any non-empty
-  string. The name promises more than it delivers, and a signed, single-use, expiring token
-  is a real design that has not been done.
+  caller, and that is a deliberate boundary rather than an omission: the runtime is a library,
+  auth belongs to the deployer, the service binds loopback by default, and a test asserts it
+  ([decisions/0020](decisions/0020-auth-is-the-deployers-boundary.md)). A deployer who exposes
+  `POST /run` without auth has given every reachable caller the ability to authorise side
+  effects, because the caller supplies the token.
 - **Runs are isolated except for the notes directory.** Each run builds its own provider,
   tool registry, budget, context assembler and trace file, and closes the registry
   afterwards. Two concurrent runs calling `write_note` with the same filename race, and the

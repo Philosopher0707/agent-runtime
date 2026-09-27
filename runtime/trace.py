@@ -124,6 +124,7 @@ class TraceWriter:
         model: str,
         tools: Sequence[ToolDescriptor] = (),
         prompt_fingerprint: Mapping[str, str] | None = None,
+        revision: str | None = None,
     ) -> None:
         """Record the task, the *whole* configuration, and the tool set as it was.
 
@@ -155,6 +156,10 @@ class TraceWriter:
                 "model": model,
                 "tools": [descriptor.model_dump(mode="json") for descriptor in tools],
                 "prompt_fingerprint": dict(prompt_fingerprint or {}),
+                #: Which build produced this run, as `git describe --always --dirty`.
+                #: None outside a repository. Recorded so a rollback can be reasoned about:
+                #: without it, "which traces came from the rolled-back code?" has no answer.
+                "revision": revision,
             },
         )
 

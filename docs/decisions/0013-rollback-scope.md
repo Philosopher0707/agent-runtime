@@ -65,3 +65,21 @@ process for a project that has never been run against a real model. Recorded in
 **Document `git revert` and stop there.** Rejected: "one command, documented" is a real
 requirement, and the difference between a documented `git revert` and a tool is that the tool
 also refuses a dirty tree and runs the gates. The refusal is most of the value.
+
+## Addendum, 2026-09-27 — the trace store, and which traces came from the rolled-back code
+
+This decision scopes rollback to the repository, and says nothing about the trace store
+because the tool does not touch it. Worth stating explicitly, since it is the one place where
+reverting the repository and reverting the *system* diverge: `.traces/` is gitignored, so a
+rollback leaves every trace exactly where it was. Traces written by the reverted revision
+remain, and are not pruned or filtered.
+
+That was unanswerable until now — `run_started` carried no revision, so "which traces came
+from the code that was rolled back?" had no answer. It now records
+`git describe --always --dirty` (`runtime/factory.py::current_revision`), resolved at the
+composition root rather than in the loop, and `None` outside a repository. A dirty tree is
+marked, because a trace from an uncommitted tree does not correspond to any commit.
+
+So a rollback is now: revert the repository, and *know* which traces belong to the revision
+you left. It still does not remove them. That is correct — a trace is a record of what
+happened, and deleting records is not what a rollback is for.

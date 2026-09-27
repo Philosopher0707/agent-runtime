@@ -824,3 +824,57 @@ noted as an upgrade path: ask the model to signal refusal *structurally*, the wa
 *Lesson: "just detect it in the text" is a recurring temptation and it has been wrong every
 time here — injection markers, refusal, and the PII redactor all wanted to read prose for
 meaning. The times it was right, the value being read was structural.*
+
+### 2026-09-27 — A boundary with no owner
+
+**L58. A limitation is not a boundary until someone owns it.**
+
+`POST /run` has no authentication. It was documented in two places and **decided nowhere** —
+not in the roadmap, not in a decision. Every other boundary here has a rule attached: the
+trust model, the untrusted-content policy, the confirmation gate, the redaction boundary. This
+was the only one stated as a fact with nobody responsible for it.
+
+*Lesson: the difference between "no auth by design" and "no auth yet" is entirely a question
+of who owns it. Accurate documentation of an unowned boundary reads exactly like documentation
+of an owned one, which is why the gap survived several passes over the same files.*
+
+Now decision 0020: the runtime is a library, auth is the deployer's, the service binds loopback
+by default, and a test asserts the default rather than trusting it.
+
+**L59. A trace did not record which build produced it, and rollback is where that bites.**
+
+`run_started` carried the task, the config, the provider, the model, the tool descriptors and
+the prompt fingerprint — and no revision. So after `make rollback` reverted the repository,
+"which traces came from the rolled-back code?" had no answer. `.traces/` is gitignored, so the
+rollback leaves every trace in place, and there was nothing in them to sort by.
+
+It now records `git describe --always --dirty`, resolved at the composition root rather than in
+the loop — "which build am I" is a property of the deployment, not of a run, and the loop must
+not shell out. `-dirty` matters as much as the hash: a trace from an uncommitted tree does not
+correspond to any commit, and recording the hash alone would imply a reproducibility that is
+not there.
+
+*Lesson: reverting a repository and reverting a system diverge exactly at the boundary of what
+the repository controls. That divergence is invisible until you ask a question the record
+cannot answer.*
+
+**L60. `pytest`'s `tmp_path` is inside this repository, so "no repository" cannot be tested
+with it.**
+
+A test asserting `current_revision()` returns `None` outside a repo failed, returning
+`481c947-dirty`. Not a bug: `pyproject.toml` sets `--basetemp=.pytest-tmp` — a deliberate
+setting, recorded because some sandboxes deny pytest's default scratch space — so pytest's
+temp directory is *inside the project*, and `git describe` correctly walked up and found it.
+
+Testing absence needed `tempfile.mkdtemp()`, which lands outside any repo.
+
+*Lesson: a test fixture's location is part of its meaning. `tmp_path` reads as "somewhere
+else" and is in fact "somewhere inside here", and a test about the filesystem boundary has to
+care which.*
+
+**L61. And a small one, caught by the test I wrote for the case I nearly skipped.**
+
+`AGENT_REVISION="   "` — whitespace — was treated as an override and returned `None`, instead
+of falling through to git. `if override:` is true for a string of spaces; `if override.strip():`
+is not. Fixed before it shipped, because a blank variable in a `.env` file is exactly the shape
+someone would write to mean "unset".
