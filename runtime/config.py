@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import AliasChoices, Field, field_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 
 from runtime.redact import DEFAULT_PATTERNS, PATTERN_NAMES
 from runtime.schemas import Contract
@@ -161,6 +161,30 @@ class Configuration(Contract):
     context: ContextConfig = Field(default_factory=ContextConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
     guardrails: GuardrailConfig = Field(default_factory=GuardrailConfig)
+
+    @model_validator(mode="after")
+    def _a_cost_budget_must_be_able_to_bind(self) -> Configuration:
+        """Refuse a configuration whose cost bound can never trip.
+
+        ``max_cost_usd`` is ``gt=0``, so a configuration always claims a positive cost
+        bound — and there is no way to opt out by setting it to zero. Cost is computed
+        from ``price_*``, which default to ``0.0``. So an ``openai_compat`` configuration
+        that omits prices reports ``$0.000000`` for every run while spending real money,
+        and the bound it declares can never fire. Silently.
+
+        Scoped to providers that actually cost money: a stub has no spend, so a zero
+        price is correct there and the three worked examples stay valid.
+        """
+        if self.provider.kind != "openai_compat":
+            return self
+        if self.provider.price_input_per_mtok or self.provider.price_output_per_mtok:
+            return self
+        raise ValueError(
+            f"budget.max_cost_usd is {self.budget.max_cost_usd} but both "
+            f"provider prices are 0.0, so every run reports $0.00 and this bound can never "
+            f"trip. Set provider.price_input_per_mtok and provider.price_output_per_mtok to "
+            f"the endpoint's real rates — the bound is only as real as those two numbers."
+        )
 
 
 def config_path(name: str, root: str | Path = DEFAULT_CONFIG_DIR) -> Path:

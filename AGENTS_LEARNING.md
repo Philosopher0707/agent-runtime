@@ -660,3 +660,60 @@ field, the person knows the mistake, and nothing else connects them.
 
 *Lesson: for a field whose name invites a specific misunderstanding, the validation message
 is the documentation that will actually be read.*
+
+### 2026-09-27 — Two silent failures, found by asking rather than running
+
+**L47. A bound that cannot fire is worse than no bound.**
+
+`max_cost_usd` is required and `gt=0`, so every configuration *claims* a positive cost bound
+and cannot opt out. Cost comes from `price_*`, which default to `0.0`. So an `openai_compat`
+configuration that omits prices reports `$0.000000` for every run while spending real money,
+and the bound can never trip.
+
+Nothing warned. The budget worked perfectly; its *input* was a silent zero. Fixed by refusing
+such a configuration at load (decision 0015), scoped to providers that actually cost money so
+the stub examples stay valid.
+
+*Lesson: enforcing that a bound is **present** is not the same as enforcing that it can
+**bind**. Every one of the four bounds is checked for existence, and the cost one was the
+only one whose value could be structurally meaningless.*
+
+**L48. A format change and a bug produced the same error.**
+
+Replay validates the recorded configuration, the recorded descriptors, and every prompt
+hash. So a trace written by an older format and a genuine defect in the code both surfaced
+as:
+
+> `ReplayDivergence: context assembly is not deterministic`
+
+Wrong diagnosis, and it sends someone hunting a bug that is not there. An old trace is a
+*fact about the file*; a divergence is a *claim about the code*. The trace now carries
+`schema_version` on every line and refuses an unknown one by name (decision 0014).
+
+*Lesson: when two different causes share one error message, the message is not doing its job
+— and the fix is usually to make the cause a value rather than an inference.*
+
+**L49. Both were found by six questions, not by 319 tests.**
+
+The questions were: where does the confirmation token come from, is the trace versioned, how
+is cost computed, what is the judge seam, what is isolated between runs, are prompts
+versioned. Answering them honestly meant reading code that the tests exercise constantly, and
+two of the six had a silent hole behind them.
+
+The tests were green throughout. They test **what the code does**; the questions asked **what
+the system claims**, and the gap between those two is where silent failures live.
+
+*Lesson: a suite can be comprehensive and still not answer "what does this actually
+guarantee?" — because that is a question about the design, and it has to be asked in words.
+Worth doing deliberately, not only when someone happens to ask.*
+
+**L50. Both fixes broke my own tests, in the same instructive way.**
+
+Two tests built an `openai_compat` configuration without prices while testing something else.
+They were constructing **invalid configurations and passing** — the new validator refused them
+before they could reach the thing they meant to test. Fixed by giving the fixtures valid
+prices and varying only the one field under test.
+
+That is the third time this session a fix has failed tests that were passing for the wrong
+reason (see L45). The pattern is consistent enough to name: **a test that constructs a fixture
+the production code would reject is testing a world that does not exist.**

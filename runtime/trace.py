@@ -21,6 +21,7 @@ from typing import Any
 from runtime.config import Configuration
 from runtime.redact import RedactionCounts, Redactor
 from runtime.schemas import (
+    TRACE_SCHEMA_VERSION,
     ContextRecord,
     FailureEvent,
     ModelCallRecord,
@@ -217,6 +218,16 @@ def read_trace(path: str | Path) -> TraceRecord:
                 break
             raise TraceError(f"{path}: line {index + 1} is not JSON: {exc}") from exc
         event = TraceEvent.model_validate(payload)
+        if event.schema_version != TRACE_SCHEMA_VERSION:
+            # A format change and a genuine bug used to produce the same error — a
+            # divergence blaming context assembly. This makes the difference legible: an
+            # old trace is a *fact about the file*, not a defect in the code.
+            raise TraceError(
+                f"{path}: line {index + 1} is trace schema version "
+                f"{event.schema_version}, and this build speaks version "
+                f"{TRACE_SCHEMA_VERSION}. Replay cannot absorb a format change — re-run the "
+                f"task on this build, or check out the build that wrote this trace."
+            )
         if trace_id is None:
             trace_id = event.trace_id
         elif event.trace_id != trace_id:

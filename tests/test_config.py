@@ -190,9 +190,67 @@ def test_a_whitespace_api_key_env_is_also_refused() -> None:
 
 def test_an_api_key_env_is_trimmed() -> None:
     config = validate_config(
-        {**MINIMAL, "provider": {"kind": "openai_compat", "api_key_env": " AGENT_API_KEY "}}
+        {
+            **MINIMAL,
+            "provider": {
+                "kind": "openai_compat",
+                "api_key_env": " AGENT_API_KEY ",
+                "price_input_per_mtok": 0.5,
+            },
+        }
     )
     assert config.provider.api_key_env == "AGENT_API_KEY"
+
+
+def test_a_cost_budget_that_cannot_trip_is_refused() -> None:
+    """Cost is computed from `price_*`, which default to 0.0.
+
+    `max_cost_usd` is `gt=0`, so a configuration always *claims* a positive cost bound and
+    there is no way to opt out. An `openai_compat` configuration that omits prices
+    therefore reports $0.000000 for every run while spending real money, and the bound it
+    declares can never fire — silently.
+    """
+    with pytest.raises(ConfigError, match="can never trip"):
+        validate_config(
+            {**MINIMAL, "provider": {"kind": "openai_compat", "api_key_env": "AGENT_API_KEY"}}
+        )
+
+
+def test_the_cost_refusal_names_the_way_out() -> None:
+    with pytest.raises(ConfigError) as caught:
+        validate_config(
+            {**MINIMAL, "provider": {"kind": "openai_compat", "api_key_env": "AGENT_API_KEY"}}
+        )
+    message = str(caught.value)
+    assert "price_input_per_mtok" in message
+    assert "price_output_per_mtok" in message
+
+
+def test_a_stub_needs_no_prices() -> None:
+    """A stub has no spend, so a zero price is correct and the worked examples stay valid."""
+    config = validate_config({**MINIMAL, "provider": {"kind": "stub"}})
+    assert config.budget.max_cost_usd > 0
+    assert config.provider.price_input_per_mtok == 0.0
+
+
+def test_one_price_is_enough_to_make_the_bound_real() -> None:
+    config = validate_config(
+        {
+            **MINIMAL,
+            "provider": {
+                "kind": "openai_compat",
+                "api_key_env": "AGENT_API_KEY",
+                "price_output_per_mtok": 1.5,
+            },
+        }
+    )
+    assert config.provider.price_output_per_mtok == 1.5
+
+
+def test_the_shipped_openai_compat_example_passes() -> None:
+    """The validator must not make the worked example unloadable."""
+    config = load_config(CONFIGS / "openai_compat.yaml")
+    assert config.provider.price_input_per_mtok > 0
 
 
 def test_the_key_is_read_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -204,7 +262,16 @@ def test_the_key_is_read_from_the_environment(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_openai_compat_without_a_base_url_is_refused() -> None:
-    config = validate_config({**MINIMAL, "provider": {"kind": "openai_compat", "base_url": None}})
+    config = validate_config(
+        {
+            **MINIMAL,
+            "provider": {
+                "kind": "openai_compat",
+                "base_url": None,
+                "price_input_per_mtok": 0.5,
+            },
+        }
+    )
     with pytest.raises(ConfigError, match="base_url"):
         build_provider(config.provider)
 

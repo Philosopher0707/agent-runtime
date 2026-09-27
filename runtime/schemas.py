@@ -268,9 +268,24 @@ class HealthResponse(Contract):
 # --------------------------------------------------------------------------- trace
 
 
+#: The format every line of a trace is written in.
+#:
+#: Bumped when the *meaning* of a payload changes in a way replay cannot absorb — a
+#: renamed field, a changed shape, a removed event. Adding a new optional event does not
+#: need a bump; changing what an existing one means does.
+#:
+#: Version 1 is the format as it exists at the moment this field was introduced, so every
+#: trace written before it is genuinely version 1 rather than unknown. That is why the
+#: field has a default instead of being required.
+TRACE_SCHEMA_VERSION = 1
+
+
 class TraceEvent(Contract):
     """One line of a trace. Append-only; never rewritten."""
 
+    #: Carried on every line rather than in a header, so a file written by an older build
+    #: is detected per line and a mixed file cannot pass as a whole one.
+    schema_version: int = TRACE_SCHEMA_VERSION
     ts: str
     trace_id: str
     event: str
