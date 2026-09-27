@@ -83,3 +83,26 @@ marked, because a trace from an uncommitted tree does not correspond to any comm
 So a rollback is now: revert the repository, and *know* which traces belong to the revision
 you left. It still does not remove them. That is correct — a trace is a record of what
 happened, and deleting records is not what a rollback is for.
+
+## Addendum 2, 2026-09-27 — the operational consequences
+
+These belong here rather than in the README's command list, which had grown four dense bullets
+for one command and was no longer skimmable. They are consequences of the decision, which is
+what this section is for.
+
+- **`REV` is required, and has no default.** A rollback to a guessed revision is worse than a
+  rollback that refuses to start — the same reasoning as the refusals above. There is no
+  "roll back one" or "roll back to last known good", because both would be guessing.
+- **It does not restart anything.** A rollback is a git operation. A process that is already
+  running keeps running the code it loaded, and a run already in flight finishes on that code
+  and records *that* revision in its trace. The revision stays resolvable, because a revert
+  preserves the history it reverts — which is the property the whole decision rests on, and
+  which `tests/test_rollback.py::test_the_revert_does_not_rewrite_history` asserts directly.
+- **"Through the gates" means twice.** `make ci` runs locally on the revert branch *before*
+  anything is pushed — a failure there aborts without pushing. The pull request then gets the
+  required `gates` check, which runs `make ci` again in CI. Nothing reaches `main` without
+  passing both.
+
+**What a trace records is therefore the code the *process loaded*, not the current working
+tree.** `current_revision()` is cached per process, which is the right semantics: a service
+reports the build it is running, not what someone has since edited on disk.
