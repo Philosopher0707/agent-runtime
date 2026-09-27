@@ -6,7 +6,7 @@ SHELL := /bin/bash
 # environment to override.
 UV ?= uv
 
-.PHONY: help install lock-check check lint format test eval smoke markers ci run clean
+.PHONY: help install lock-check check lint format test eval smoke markers ci rollback run clean
 
 help:
 	@echo "install     sync dependencies into .venv (creates uv.lock)"
@@ -16,6 +16,7 @@ help:
 	@echo "markers     measure the injection-marker rule (ARGS=--repo sweeps this repo)"
 	@echo "smoke       boot the service, POST one run, assert 200 + output schema"
 	@echo "lock-check  fail if uv.lock is out of date with pyproject.toml"
+	@echo "rollback    revert back to REV=<sha> on a branch, through the gates"
 	@echo "run         run the CLI against configs/default.yaml"
 
 install:
@@ -58,6 +59,9 @@ markers:
 
 smoke:
 	$(UV) run python scripts/smoke.py
+
+rollback:
+	$(UV) run python scripts/rollback.py --to $(REV) $(ARGS)
 
 run:
 	$(UV) run python cli.py --config configs/default.yaml --task "What is 21 * 2?"
