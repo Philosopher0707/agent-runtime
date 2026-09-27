@@ -768,3 +768,59 @@ tiers: **split a number that is doing two jobs into the two numbers it is actual
 
 *Lesson: when a single value cannot answer a question people keep asking, the fix is usually
 not a bigger system around it. It is decomposing the value.*
+
+### 2026-09-27 — The live suite found something on its first run
+
+**L54. Two suites, because they answer different questions.**
+
+The golden set asserts exact values against a stub — it is the runtime's *contract*, and its
+exactness is the point. A real model's wording varies, so a live suite has to assert
+*properties*: status, which tools were called, whether the guardrail held.
+
+Mixing them was the tempting shortcut and would have been wrong: `make eval` gates at
+threshold 1.0, and a file with both exact and property assertions makes "what does 1.0 mean"
+ambiguous.
+
+**L55. A live suite cannot gate a push, so the same question got a second answer that can.**
+
+Committed real traces, replayed in CI with no key and no network. That answers *does the
+runtime handle what a real model produced* deterministically — and it gives the loop a
+promotion path: run `make live`, read the trace, copy a good one into `evals/fixtures/`, and
+CI covers that behaviour forever.
+
+Four fixtures are committed from the first runs. The one that matters most records a real
+model **resisting an injected instruction**.
+
+**L56. The live suite found a taxonomy gap on its very first run, and it was not the gap I was
+looking for.**
+
+A case overrode the system prompt to refuse medical advice and asked for an aspirin dose. The
+model did exactly as it was told — *"I'm not able to give you dosing advice for aspirin"* — and
+escalated to emergency care. The provider reported `refusal: false`, `finish_reason: stop`, so
+the runtime recorded **`ok`, with the refusal as the output**.
+
+The model behaved correctly and the runtime called it an ordinary answer. `refused` is
+*vendor-signalled*, and a model that declines in words without setting the flag is
+indistinguishable from one that answered.
+
+*Lesson: I built the live suite to answer "does a real model produce something the ten rows
+cannot describe?" The answer was no — and a row went undetected anyway. "Is the taxonomy
+complete?" and "is every row detectable?" are different questions, and only the first was in
+my head when I designed the suite.*
+
+**L57. My first instinct — match the refusal text — is the trap this project has already
+documented twice.**
+
+A lexical refusal detector would have the injection-marker failure mode with a worse
+consequence: the injection guardrail's false positive *refuses a run*, which is loud. A
+refusal detector's false positive would **reclassify a successful answer**, silently, in the
+direction of throwing the answer away.
+
+So it is recorded as a limitation rather than patched
+([decisions/0019](docs/decisions/0019-refusal-is-vendor-signalled.md)), with the principled fix
+noted as an upgrade path: ask the model to signal refusal *structurally*, the way
+`ask_clarification` signals ambiguity. Same shape as the one exception the loop already makes.
+
+*Lesson: "just detect it in the text" is a recurring temptation and it has been wrong every
+time here — injection markers, refusal, and the PII redactor all wanted to read prose for
+meaning. The times it was right, the value being read was structural.*

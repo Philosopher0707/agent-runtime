@@ -22,13 +22,25 @@ The gates individually, if you want them one at a time:
 make lock-check       # fail if uv.lock is out of date with pyproject.toml
 make check            # ruff + pytest
 make eval             # golden set, prints the score, non-zero below threshold
+make live             # property suite against a REAL model (needs a key; not in ci)
 make markers          # measures the injection-marker rule (ARGS=--repo sweeps this repo)
 make smoke            # boots the service, POSTs one run, asserts 200 + schema
 make rollback REV=<sha>   # revert back to a revision, through the gates
 ```
 
-`configs/default.yaml` uses a scripted model, so everything above runs with **no API key
-and no network**.
+**Two eval suites, because they test different things.** `make eval` asserts *exact* outcomes
+against a scripted model — it is the runtime's contract test, deterministic, and it gates CI.
+`make live` asserts *properties* against a real model — status, which tools were called,
+whether the guardrail held — because a real model's wording varies and a suite that fails on
+phrasing is a suite nobody keeps.
+
+A live run cannot gate a push, so the same question gets a second answer that can: real traces
+are committed under `evals/fixtures/` and replayed in CI with no key and no network. Run
+`make live`, read the trace, copy a good one into `evals/fixtures/`, and CI covers that
+behaviour forever.
+
+`configs/default.yaml` uses a scripted model, so everything above except `make live` runs with
+**no API key and no network**.
 
 ## Pointing it at a real model
 
@@ -177,6 +189,9 @@ fuller list in `docs/architecture.md`.
   prose. The envelope, not the scan, is the primary defence.
 - **`confirmation_token` is a presence check, not a capability.** It stops the *model* from
   authorising a side effect. It does not authenticate the caller — `POST /run` has no auth.
+- **`refused` means the provider said the model refused.** A model that declines *in words*
+  without setting the vendor flag is reported as `ok`, with the refusal as the output. The
+  live suite found exactly this on its first run.
 - **Runs are isolated except for the notes directory.** Each run gets its own budget,
   context, tool executor and trace, but two concurrent runs writing the same note filename
   race silently.

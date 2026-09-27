@@ -1,0 +1,13 @@
+id: multi-step-tool-calls
+description: >-
+  Two calls across two steps, which is the case that shows a real model accumulates a
+  transcript rather than restarting. Both results must reach the final answer.
+task: What is 9 * 9? Then what is 8 * 8? Use the calculator for both.
+config: openai_compat
+expect:
+  status_in: [ok]
+  tools_called_includes: [calculator]
+  failure_classes_exclude: [provider_error, guardrail_trip, tool_error]
+  output_matches: "\\b81\\b"
+  steps_at_most: 4
+  model_calls_at_most: 4
