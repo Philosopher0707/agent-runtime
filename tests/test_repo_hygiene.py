@@ -72,3 +72,46 @@ def test_every_log_entry_is_dated() -> None:
 @pytest.mark.parametrize("path", [AGENTS_MD, LEARNING_LOG, README_MD])
 def test_instruction_files_are_not_empty(path: Path) -> None:
     assert path.read_text(encoding="utf-8").strip()
+
+
+# ------------------------------------------------------------------- the docs tree
+
+LINK = re.compile(r"\]\(([^)#\s]+\.md)\)")
+
+
+def markdown_files() -> list[Path]:
+    return sorted([*REPO_ROOT.glob("*.md"), *(REPO_ROOT / "docs").rglob("*.md")])
+
+
+def test_the_docs_tree_is_found() -> None:
+    """A guard on the guard: if the search stops finding files, the link check proves nothing."""
+    assert len(markdown_files()) >= 15
+
+
+def test_internal_markdown_links_resolve() -> None:
+    """A docs tree is only as good as its links, and a moved file orphans them silently.
+
+    Cross-references are how the decision record stays navigable — `0011` points at `0006`,
+    the architecture doc points at the decisions that justify it. A broken one is invisible
+    until someone clicks it.
+    """
+    broken: list[str] = []
+    for path in markdown_files():
+        for target in LINK.findall(path.read_text(encoding="utf-8")):
+            if not (path.parent / target).resolve().exists():
+                broken.append(f"{path.relative_to(REPO_ROOT)} -> {target}")
+    assert not broken, f"broken internal doc links: {broken}"
+
+
+def test_the_link_check_is_not_vacuous() -> None:
+    """The floor is deliberately well below the current count.
+
+    Its job is to catch the *pattern* drifting and silently matching nothing — not to pin a
+    number that a doc edit would then fail. There are around 17 internal links today; the
+    floor is 10.
+    """
+    total = sum(len(LINK.findall(path.read_text(encoding="utf-8"))) for path in markdown_files())
+    assert total >= 10, (
+        f"only {total} internal links found across {len(markdown_files())} docs — the pattern "
+        f"has probably drifted and the link check is now vacuous"
+    )

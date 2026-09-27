@@ -50,15 +50,15 @@ Each component owns exactly one thing. Do not move a responsibility without sayi
 ## Verification
 
 ```bash
-make check    # ruff + pytest
-make eval     # golden-set run, prints score, exits non-zero below threshold
-make smoke    # boot the service, POST one run, assert 200 + output schema
+make ci    # every gate, in order, stopping at the first failure
 ```
+
+`make help` lists the rest.
 
 Baseline at initialisation: **0 tests, empty eval set.** Both numbers are expected to move; state
 them in your report. Never quote a count from memory — run it.
 
-**Until `make eval` gates CI, no change may be claimed as an improvement.**
+**`make eval` gates CI.** No change may be claimed as an improvement without it.
 
 ## Failure taxonomy
 
@@ -114,8 +114,9 @@ JSON logs, one event per line, `trace_id` on every line. No `print()` in `runtim
 
 Single-port HTTP service. `POST /run` → the output schema. `GET /healthz` →
 `{status, version, uptime_s, model_reachable, tools_loaded}`. Config via env only, with
-`.env.example` kept current. Rollback: one command, documented, and **performed once before you
-need it** — an untested rollback is not a rollback.
+`.env.example` kept current — and the file it names is actually loaded, by every entry point.
+Rollback: one command, documented, and **performed once before you need it** — an untested
+rollback is not a rollback.
 
 ## Non-goals
 
