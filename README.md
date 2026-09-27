@@ -12,16 +12,36 @@ never a branch in the core.
 
 ```bash
 make install          # uv sync --all-extras, writes uv.lock
+make ci               # every gate, in order, stopping at the first failure
+make run              # the CLI against configs/default.yaml
+```
+
+The gates individually, if you want them one at a time:
+
+```bash
+make lock-check       # fail if uv.lock is out of date with pyproject.toml
 make check            # ruff + pytest
 make eval             # golden set, prints the score, non-zero below threshold
-make smoke            # boots the service, POSTs one run, asserts 200 + schema
 make markers          # measures the injection-marker rule (ARGS=--repo sweeps this repo)
-
-make run              # the CLI against configs/default.yaml
+make smoke            # boots the service, POSTs one run, asserts 200 + schema
 ```
 
 `configs/default.yaml` uses a scripted model, so everything above runs with **no API key
 and no network**.
+
+## CI
+
+`.github/workflows/ci.yml` installs with `uv sync --frozen` and then runs exactly one
+thing: `make ci`. The gates are defined once, in the Makefile, so a local run and CI cannot
+drift — `tests/test_ci_contract.py` fails if the workflow starts invoking a gate directly,
+or if a gate is dropped from the `ci` recipe.
+
+`--frozen` matters. Without it a stale `uv.lock` is silently re-resolved rather than
+reported, so CI would test something other than what is committed.
+
+Each gate was verified to fail before it was trusted: a stale lock, a broken assertion, a
+wrong eval expectation, a marker that catches nothing, and an end-to-end regression each
+turn `make ci` non-zero, and `make ci` stops at the first one.
 
 ## Three ways in
 

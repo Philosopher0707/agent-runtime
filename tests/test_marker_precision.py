@@ -21,7 +21,12 @@ from evals.markers import (
     measure,
     samples,
 )
-from scripts.measure_markers import MAX_FALSE_POSITIVE_RATE, MIN_RECALL
+from scripts.measure_markers import (
+    MAX_DEAD_MARKERS,
+    MAX_FALSE_POSITIVE_RATE,
+    MIN_RECALL,
+    ablation,
+)
 
 
 def rule(text: str) -> Assessment:
@@ -58,24 +63,17 @@ def test_recall_on_unambiguous_payloads_is_total(measurement) -> None:
 
 def test_every_marker_is_load_bearing() -> None:
     """Ablate each marker. If removing it costs no recall, it is only a false-positive
-    generator and must be removed — not kept on the grounds that it might help."""
-    import context.sanitize as sanitize
+    generator and must be removed — not kept on the grounds that it might help.
 
-    original = sanitize.MARKERS
-    baseline = measure(rule).recall
-    dead: list[str] = []
-    try:
-        for marker in original:
-            sanitize.MARKERS = tuple(m for m in original if m.name != marker.name)
-            if measure(rule).recall >= baseline:
-                dead.append(marker.name)
-    finally:
-        sanitize.MARKERS = original
-
-    assert not dead, (
+    Calls the same ``ablation`` the report does, so ``make markers`` and this test cannot
+    disagree about which markers are dead. They did once: the report exited 0 on a marker
+    that caught nothing, and only this test noticed.
+    """
+    result = ablation()
+    assert len(result.dead) <= MAX_DEAD_MARKERS, (
         f"these markers catch nothing in the corpus, so they only add false-positive risk: "
-        f"{dead}. Either remove them, or add a payload that only they catch — and if you "
-        f"add a payload, it must be a real attack shape, not a marker-shaped one."
+        f"{result.dead}. Either remove them, or add a payload that only they catch — and if "
+        f"you add a payload, it must be a real attack shape, not a marker-shaped one."
     )
 
 

@@ -51,10 +51,7 @@ cost to be wrong.
 6. **Should a clarifying question be once per *run* or once per *ambiguity*?** Currently
    once per run, and the run stops at the first question, so a second ambiguity is never
    reached. *Settle:* watch whether real tasks carry more than one ambiguity.
-7. **`make eval` does not gate CI** — there is no CI. The spec says no change may be
-   called an improvement until it does. *Settle:* add a workflow that runs `make check`
-   and `make eval`.
-8. **Is the 8,000-byte budget on `AGENTS.md` workable?** See 2026-09-27 / L7.
+7. **Is the 8,000-byte budget on `AGENTS.md` workable?** See 2026-09-27 / L7.
 
 ## Log
 
@@ -231,3 +228,87 @@ had no way to tell whether I had improved anything.
 Also worth recording: the measurement was cheap. A corpus file, a 30-line measurement
 engine, and a script — under an hour of work to replace an intuition with a number and
 delete a marker. It should have been done before the policy was written, not after.
+
+### 2026-09-27 — CI: making the gates the precondition rather than the aspiration
+
+Answers the question formerly listed as open question #7. The successor list is renumbered.
+
+**L15. I had been reporting "all gates green" as if it were the same claim as "the gates
+are gated", and it is not.**
+
+The spec's own precondition: *"Until `make eval` gates CI, no change may be claimed as an
+improvement."* I had four green gates and no CI, which means every improvement claim I made
+— the 36% → 0% guardrail fix included — was checkable only by me, on my machine, when I
+remembered to run it. Doing CI first was the correct dependency order, and I had it
+backwards in my head: I thought of CI as a chore to do once the code was good, when it is
+what makes "the code is good" a statement anyone can check.
+
+**L16. A latent CI failure was sitting in the Makefile, and it looked harmless locally.**
+
+`UV_PYTHON ?= $(shell command -v python3.13 || command -v python3.12 || command -v python3)`
+resolves to 3.13 here, so everything worked and nothing looked wrong. On a GitHub runner it
+would resolve to whatever `python3` is — 3.12, against a project that requires ≥3.13 — and
+CI would fail on the first run for a reason that has nothing to do with the code.
+
+The fix was to **delete** the pin and let `uv` read `.python-version`, which is the
+mechanism designed for exactly this.
+
+*Lesson: a convenience default that happens to be correct on one machine is a portability
+bug waiting for a different machine. "It works here" is a statement about one machine.*
+
+**L17. A gate that cannot fail is decoration, so each one was broken on purpose.**
+
+Reading a Makefile tells you what it is supposed to do. Breaking each input and asserting
+`make ci` goes non-zero tells you what it does:
+
+| gate | induced failure | exit |
+|---|---|---|
+| `lock-check` | a dependency added to `pyproject.toml` | 2 |
+| `check` | a false assertion in a test | 2 |
+| `eval` | an eval case expecting the wrong status | 2 |
+| `markers` | a marker that catches nothing | 2 |
+| `smoke` | a regression in the end-to-end path | 2 |
+
+Also verified that `ci` *stops*: with `markers` broken, `smoke` never ran and `all gates
+passed` was never printed. A gate suite that runs everything and reports at the end is a
+different, weaker thing.
+
+**L18. `make markers` exited 0 on a marker that caught nothing — and the docstring claimed
+it couldn't.**
+
+The script said the report and the test "cannot disagree". They did: the ablation was
+enforced only by the test, so `make markers` reported `ok` on a dead marker and only
+`make ci` noticed, because `check` runs the test. Fixed by moving the ablation into the
+script, printing it, and having the test call the same function.
+
+This is the **second** time this session a consistency claim between two things turned out
+to be asserted rather than checked — the first was the marker thresholds, and the shape is
+identical both times: *two places that are supposed to agree, and nothing that compares
+them.* It is now a pattern I would look for deliberately rather than stumble into.
+
+**L19. `cp` is aliased to `cp -i` in this shell, and my backup/restore silently declined.**
+
+Three files stayed mutated after a verification experiment — a dependency added to
+`pyproject.toml`, a broken assertion, a wrong eval expectation — because every `cp` prompted
+and took the default "no". I only noticed because I ran `git status` afterwards.
+
+*Lessons: after a mutation experiment, **verify the tree is restored** rather than assuming
+the restore worked; use `command cp` to bypass an alias; and `git checkout -- <path>` is the
+reliable restore for anything committed.*
+
+**L20. `uv lock --check` does not write, but a later `uv run` does.**
+
+Mutating `pyproject.toml` and then running any `uv run` caused `uv` to re-resolve and write
+`six` into `uv.lock`. The lockfile check had reported the staleness correctly and changed
+nothing; the write came from a later command.
+
+That is the concrete argument for `--frozen` in CI. Without it, a stale lock is silently
+rewritten and CI tests something other than what is committed — a green build that means
+less than it appears to.
+
+**L21. What CI changes about everything after it.**
+
+The remaining gaps (PII handling, rollback) and the unverified claims (no real model, no
+live endpoint) are now checkable by CI rather than by me remembering. That is the whole
+point of having done this first: it converts *"I ran it"* into *"it runs"*, and it is the
+precondition the spec named before any of the other work could be called done.

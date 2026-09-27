@@ -16,6 +16,15 @@ named in `runtime/factory.py` and nowhere else.
 
 ## Conventions that are not obvious from the code
 
+- **`make ci` is the single definition of the gates.** `.github/workflows/ci.yml` installs
+  with `uv sync --frozen` and then runs `make ci` and nothing else. Never invoke a gate from
+  the workflow — `tests/test_ci_contract.py` fails if you do, and if a gate is dropped from
+  the `ci` recipe. `make ci` runs `lock-check check eval markers smoke`, in order, stopping
+  at the first failure. `--frozen` matters: without it a stale `uv.lock` is silently
+  re-resolved rather than reported.
+- **Do not pin `UV_PYTHON` in the Makefile.** `uv` reads `.python-version`. A default of
+  `command -v python3` looks harmless and breaks CI, where the runner's `python3` may be
+  older than the project requires.
 - **The injection markers are measured, not asserted.** `make markers` grades the rule
   against `evals/markers.py` and exits non-zero below threshold; the same thresholds are
   enforced in `tests/test_marker_precision.py`, so the report and the tripwire cannot

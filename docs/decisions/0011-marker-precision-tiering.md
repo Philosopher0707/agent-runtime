@@ -122,3 +122,18 @@ measured the *corpus*, not the markers; the fix was to strengthen the corpus.
 
 **Raise the corroboration count to three.** Crude: it weakens detection without addressing
 why generic phrases co-occur, which is distance.
+
+## Correction, same day
+
+The claim above — *"the report and the tripwire cannot disagree"* — was **not true** when it
+was written. The ablation was enforced only by the test. With a dead marker added,
+`make markers` printed its report and exited **0**; only `make ci` noticed, because `check`
+runs the ablation test.
+
+It was found by testing the gate rather than the code: adding a marker that catches nothing
+and asking whether the gate that exists to catch that actually catches it.
+
+The ablation now lives in `scripts/measure_markers.py`, is printed in the report, and is
+called by the test — so the sentence is true now rather than aspirational. This is the same
+pattern as L5 in `AGENTS_LEARNING.md`: a consistency claim between two things has to be
+checked, not asserted.

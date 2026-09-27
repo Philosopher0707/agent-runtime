@@ -1,0 +1,32 @@
+name: ci
+
+# One job, one command. `make ci` is the single definition of the gates, so this file
+# deliberately runs no gate directly — see tests/test_ci_contract.py, which fails if it
+# starts to. Keeping the definition in the Makefile means a local `make ci` and CI run the
+# same thing, which is what makes "this change is an improvement" a checkable claim.
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # --frozen fails if uv.lock and pyproject.toml disagree, so a stale lock is a CI
+      # failure rather than a silent re-resolve that would not match what was tested.
+      - name: install
+        run: uv sync --frozen --all-extras
+
+      - name: gates
+        run: make ci

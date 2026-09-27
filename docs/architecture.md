@@ -82,6 +82,7 @@ returns nothing, and every vendor string lives in `providers/`.
 | A trace alone reconstructs the run | `TraceWriter` records responses, outcomes, and descriptors | `test_replay.py` |
 | Replay never executes a tool | `RecordedDispatcher` | `test_replay.py` |
 | A class with no test is undiscovered | the taxonomy coverage test | `test_taxonomy.py::test_every_failure_class_has_a_test` |
+| CI and a local run are the same thing | the workflow calls `make ci` and runs nothing else | `test_ci_contract.py` |
 
 ## The trust model
 
@@ -127,9 +128,9 @@ A capability is a configuration, never a branch in the core.
    Registration will refuse it otherwise.
 2. Add `configs/<name>.yaml`. All four budget bounds are mandatory.
 3. Add cases under `evals/cases/` that force the failure classes it can hit.
-4. Run `make check && make eval`. If the score moves, say so in the commit message.
-5. If you touched the injection markers, run `make markers`. It fails below threshold, and
-   the ablation test will refuse a marker that catches nothing.
+4. Run `make ci`. If the score moves, say so in the commit message.
+5. If you touched the injection markers, `make markers` will tell you. It fails below
+   threshold, and refuses a marker that catches nothing.
 
 ## What is not here
 
