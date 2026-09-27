@@ -87,6 +87,9 @@ docs/         architecture and the decision record
 
 ## Where to read next
 
+- `AGENTS_LEARNING.md` — what this project has taught us: the surprises, the mistakes, and
+  the questions still open. Append a dated entry when you learn something that would change
+  your next move.
 - `docs/architecture.md` — the component map, the authority boundaries, and the
   invariants with the tests that hold them.
 - `docs/decisions/` — one file per decision, numbered, append-only. Read
