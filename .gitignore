@@ -17,3 +17,7 @@ build/
 
 .env
 .env.local
+
+# Agent working memory: workspace-local scratch, not project source. It stays on disk but
+# out of the repository, so publishing the repository does not publish the notes.
+.workbuddy-ai/
