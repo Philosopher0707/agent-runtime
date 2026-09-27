@@ -173,3 +173,87 @@ def test_every_decision_the_readme_cites_is_linked() -> None:
         f"the README cites {sorted(set(bare))} without linking — a bare id is unchecked. Use "
         f"[0002](docs/decisions/0002-....md)."
     )
+
+
+# ----------------------------------------------------- citations of the test suite
+
+
+#: `test_foo.py` — a file citation. `test_foo` not followed by `.py` — a function citation.
+CITED_TEST_FILE = re.compile(r"\b(test_[a-z_0-9]+)\.py")
+CITED_TEST_FUNC = re.compile(r"\b(test_[a-z_0-9]+)\b(?!\.py)")
+
+
+def citing_docs() -> list[Path]:
+    """The **reference** docs: README, the spec, and `docs/`.
+
+    `AGENTS_LEARNING.md` is deliberately excluded. It is a historical record of mistakes, so it
+    must be free to name things that were wrong — including a test that never existed, which is
+    precisely what L70 does. Requiring every name in the log to resolve would make the log
+    unable to report its own errors.
+
+    The reference docs are the opposite: they make claims a reader acts on, so every citation
+    in them must resolve. The false citation this check was written for appeared in *both* a
+    decision record and the log, so excluding the log still catches it.
+    """
+    return [README_MD, AGENTS_MD, *(REPO_ROOT / "docs").rglob("*.md")]
+
+
+def suite_files() -> set[str]:
+    """Named without a `test_` prefix on purpose.
+
+    A helper called `test_*` is collected by pytest as a test — it runs, and it "passes" if it
+    returns anything. These two did exactly that until the warnings gave them away. Same reason
+    `tests/helpers.py` is not collected: a helper must not look like a test.
+    """
+    return {path.stem for path in (REPO_ROOT / "tests").glob("*.py")}
+
+
+def suite_functions() -> set[str]:
+    found: set[str] = set()
+    for path in (REPO_ROOT / "tests").glob("*.py"):
+        found |= set(re.findall(r"^def (test_[a-z_0-9]+)", path.read_text(encoding="utf-8"), re.M))
+    return found
+
+
+def test_the_suite_is_found() -> None:
+    """A guard on the guard."""
+    assert len(suite_files()) >= 15
+    assert len(suite_functions()) >= 100
+
+
+def test_every_test_file_the_docs_cite_exists() -> None:
+    cited: set[str] = set()
+    for path in citing_docs():
+        cited |= set(CITED_TEST_FILE.findall(path.read_text(encoding="utf-8")))
+    assert not cited - suite_files(), (
+        f"docs cite test files that do not exist: {sorted(cited - suite_files())}"
+    )
+
+
+def test_every_test_function_the_docs_cite_exists() -> None:
+    """The docs cite tests as evidence. A citation of a test that does not exist is worse
+    than no citation: it reads as proof and there is nothing behind it.
+
+    This found one on its first run — `test_task_text_is_not_scanned_as_injection`, cited in
+    decision 0009 and in the learning log as the executable proof of the trust model, and
+    never written. The behaviour was covered the whole time, by an eval case. The citation
+    was wrong, not the claim.
+    """
+    cited: set[str] = set()
+    for path in citing_docs():
+        cited |= set(CITED_TEST_FUNC.findall(path.read_text(encoding="utf-8")))
+    missing = sorted(cited - suite_functions())
+    assert not missing, (
+        f"docs cite test functions that do not exist: {missing}. A cited test reads as "
+        f"evidence — either write it, or cite the artefact that actually covers it."
+    )
+
+
+def test_the_citation_checks_are_not_vacuous() -> None:
+    files_cited = funcs_cited = 0
+    for path in citing_docs():
+        text = path.read_text(encoding="utf-8")
+        files_cited += len(CITED_TEST_FILE.findall(text))
+        funcs_cited += len(CITED_TEST_FUNC.findall(text))
+    assert files_cited >= 10, f"only {files_cited} test-file citations found"
+    assert funcs_cited >= 5, f"only {funcs_cited} test-function citations found"
