@@ -24,10 +24,37 @@ make check            # ruff + pytest
 make eval             # golden set, prints the score, non-zero below threshold
 make markers          # measures the injection-marker rule (ARGS=--repo sweeps this repo)
 make smoke            # boots the service, POSTs one run, asserts 200 + schema
+make rollback REV=<sha>   # revert back to a revision, through the gates
 ```
 
 `configs/default.yaml` uses a scripted model, so everything above runs with **no API key
 and no network**.
+
+## Pointing it at a real model
+
+`configs/openai_compat.yaml` is a worked example for any OpenAI-compatible endpoint. Two
+files, and the split matters:
+
+```bash
+cp .env.example .env     # then put AGENT_API_KEY=... in it. .env is gitignored.
+# and edit configs/openai_compat.yaml: model, base_url, and the two prices
+```
+
+The **key** goes in `.env`, or in the environment — a real environment variable wins over
+the file. The **endpoint, model and prices** go in the configuration file, because they are
+part of the capability. Prices are not optional: `max_cost_usd` is a required bound, so a
+configuration whose prices are both zero has a bound that can never fire, and it is refused
+at load.
+
+```bash
+uv run python cli.py run --config openai_compat --task "What is 21 * 2?"
+```
+
+Run it from the project root — `.env` is resolved against the working directory.
+
+`make eval` still runs the **stub** suite: its cases assert exact outcomes, which only works
+against a deterministic model. Grading a live model needs a scorer that asserts *properties*,
+and that is roadmap phase 1.
 
 ## CI
 
@@ -83,10 +110,15 @@ else.
   model is not even told the field exists, and if it supplies one anyway it is
   overwritten.
 - **Every run emits one append-only trace, and the trace alone reconstructs the run.**
-  Replay verifies each rebuilt prompt hash and never executes a tool.
+  Replay verifies each rebuilt prompt hash and never executes a tool. Every line carries a
+  schema version, so a trace written by an older format is refused by name rather than
+  reported as a divergence.
 - **The prompt is never redacted; the trace can be.** Redacting the prompt would silently
   change the task. A redacted trace cannot be replayed, so the two are mutually exclusive —
   which is stated in the design rather than discovered later.
+- **A declared bound has to be able to bind.** All four budget bounds are required, and a
+  configuration whose cost bound cannot fire — prices unset, so cost is pinned at zero — is
+  refused at load rather than reporting safety it does not provide.
 
 ## Adding a capability
 
@@ -95,19 +127,19 @@ else.
    refuses it otherwise.
 2. Add `configs/<name>.yaml`. All four budget bounds are mandatory.
 3. Add cases in `evals/cases/` that force the failure classes it can hit.
-4. `make check && make eval`. If the score moves, record it in the commit message.
+4. Run `make ci`. If the score moves, record it in the commit message.
 
 ## Layout
 
 ```
-runtime/      the loop, budget, trace, replay, schemas, status vocabulary, composition root
+runtime/      the loop, budget, trace, replay, redaction, schemas, status vocabulary, factory
 providers/    the Provider protocol, a stub, an OpenAI-compatible adapter, a replayer
 tools/        the tool contract and dispatch policy, the built-ins, a scripted double
 context/      context assembly, truncation, and untrusted-content handling
-evals/        the golden-set runner, the deterministic scorer, the judge seam
+evals/        the golden-set runner, the marker corpus, and the judge seam (a placeholder)
 configs/      worked examples — the fastest way to understand the design
 tests/        one test per failure class, plus the invariants
-docs/         architecture and the decision record
+docs/         architecture, the roadmap, and the decision record
 ```
 
 ## Where to read next
@@ -127,8 +159,24 @@ docs/         architecture and the decision record
 
 ## Known limitations
 
-Stated rather than discovered later. Token accounting is a heuristic; a timed-out
-in-process tool's thread keeps running; structured output validates a JSON Schema subset;
-a wall-clock-bounded run only replays identically under a deterministic clock;
-`openai_compat` is verified against a mock transport rather than a live endpoint. Each is
-recorded with its reasoning in `docs/decisions/` and `docs/architecture.md`.
+Stated rather than discovered later. Each has its reasoning in `docs/decisions/` and the
+fuller list in `docs/architecture.md`.
+
+- **Token accounting is a heuristic**, calibrated against a real endpoint at two ratios —
+  4.0 characters per token for prose, 2.0 for JSON tool schemas. Measured at parity on the
+  shapes tested; a real tokeniser remains the documented upgrade path.
+- **A timed-out in-process tool's thread keeps running**, because Python cannot kill one.
+- **Structured output validates a JSON Schema subset**, not the whole standard.
+- **Redaction is pattern-based and off by default** — it catches shapes, not meanings, and
+  enabling it makes the trace non-replayable.
+- **The injection scan is a lexical tripwire** with a measured precision limit: it cannot
+  tell a payload from prose that *quotes* one, and it misses payloads written as ordinary
+  prose. The envelope, not the scan, is the primary defence.
+- **`confirmation_token` is a presence check, not a capability.** It stops the *model* from
+  authorising a side effect. It does not authenticate the caller — `POST /run` has no auth.
+- **Runs are isolated except for the notes directory.** Each run gets its own budget,
+  context, tool executor and trace, but two concurrent runs writing the same note filename
+  race silently.
+- **`openai_compat` has run against a live endpoint** (OpenRouter) for a plain answer and a
+  native tool call, and a real trace replayed exactly. Its error paths are covered against a
+  mock transport; it has not met a wide range of providers.

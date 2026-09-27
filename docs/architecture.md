@@ -84,6 +84,9 @@ returns nothing, and every vendor string lives in `providers/`.
 | A class with no test is undiscovered | the taxonomy coverage test | `test_taxonomy.py::test_every_failure_class_has_a_test` |
 | CI and a local run are the same thing | the workflow calls `make ci` and runs nothing else | `test_ci_contract.py` |
 | Nothing is logged that redaction was asked to remove | `TraceWriter.emit` — the one chokepoint every event passes | `test_redaction.py` |
+| A trace says which format it is | `TRACE_SCHEMA_VERSION` on every line; `read_trace` refuses an unknown one | `test_trace.py` |
+| A declared cost bound can actually bind | `Configuration` refuses a costed provider with no prices | `test_config.py` |
+| Every entry point loads `.env` | enumerated by test, not remembered | `test_env_file.py` |
 
 ## The trust model
 
@@ -149,7 +152,10 @@ framework — the loop is 40 lines of orchestration and is meant to stay that wa
 
 Stated rather than discovered later:
 
-- **Token accounting is a heuristic** (`chars / 4`). Documented in
+- **Token accounting is a heuristic**, calibrated against a real endpoint: **4.0**
+  characters per token for prose (measured ~4.6, so slightly conservative — the safe
+  direction) and **2.0** for JSON tool schemas, which tokenise far worse. Before the
+  calibration it was under by 5.5x–12.6x. Documented in
   [decisions/0005](decisions/0005-token-estimation.md).
 - **A timed-out in-process tool's thread keeps running.** Documented in
   [decisions/0007](decisions/0007-in-process-tool-timeouts.md).
@@ -161,11 +167,27 @@ Stated rather than discovered later:
   name in prose, or a number in a format the patterns do not list, passes through. Enabling
   it makes the trace non-replayable, which is why the default is off rather than on
   ([decisions/0012](decisions/0012-pii-context-and-redaction.md)).
-- **`openai_compat` is verified against a mock transport, not a live endpoint.** The
-  parsing and error paths are covered; the vendor's actual behaviour is not.
 - **The injection scan is a tripwire with a measured precision limit.** It is lexical, so
   it cannot distinguish a payload from prose that *quotes* a payload, and it misses
   payloads written as ordinary plausible prose. Measured at 0% false positives and 100%
   recall on a hand-built corpus of 26 benign and 15 hostile samples
   ([decisions/0011](decisions/0011-marker-precision-tiering.md)); the corpus is not real
   tool output. The envelope, not the scan, is the primary defence.
+- **`confirmation_token` is a presence check, not a capability.** It stops the *model* from
+  authorising a side effect, which it does structurally. It does **not** authenticate the
+  caller: `POST /run` has no auth, so anyone who can reach the port can pass any non-empty
+  string. The name promises more than it delivers, and a signed, single-use, expiring token
+  is a real design that has not been done.
+- **Runs are isolated except for the notes directory.** Each run builds its own provider,
+  tool registry, budget, context assembler and trace file, and closes the registry
+  afterwards. Two concurrent runs calling `write_note` with the same filename race, and the
+  last write wins silently. That is the one piece of shared mutable state, and it is
+  carried by the tool the design uses to demonstrate the confirmation gate.
+- **`openai_compat` has run against a live endpoint**, and a real trace replayed exactly.
+  The parsing and error paths are covered against a mock transport; a wide range of
+  providers has not been tried, and the two ratios in
+  [decisions/0005](decisions/0005-token-estimation.md) are calibrated from a single vendor.
+- **There is no per-model price table.** Prices are per-configuration, so a price change is
+  a config edit and an unknown model is a missing price, not a lookup failure. The *silent*
+  case is closed ([decisions/0015](decisions/0015-cost-budget-must-bind.md)); the general
+  case is not.

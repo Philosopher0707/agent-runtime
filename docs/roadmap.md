@@ -17,9 +17,17 @@ it — it carried a count that was already wrong, was "refreshed" to a second wr
 had to be rolled back. The rollback restored the first wrong number, because rollback
 restores a revision, not correctness.
 
-**And nothing in it has met real data.** Every eval case is stub-driven. A stub is a
-*specification* of a model, not a model — it cannot violate our assumptions, and real ones
-can. That is the single most important fact about this project's current state.
+**It has now met real data, once.** A real endpoint has run a plain answer and a native tool
+call, and a real trace replayed exactly — the strongest invariant in the project, demonstrated
+rather than reasoned. It found two defects within four API calls (the token estimate omitted
+the tool schemas and used the prose ratio for JSON; the two context thresholds measured the
+same quantity when they should measure different ones), both fixed with the numbers in
+[decisions/0005](decisions/0005-token-estimation.md).
+
+What has **not** met real data is nearly everything else: the 33 eval cases are still
+stub-driven, the marker corpus is hand-built, and one provider on one day is not a range of
+providers. The distinction matters — "it works against a real model" is now a fact, and it is
+a much narrower fact than it sounds.
 
 ## Phase 1 — prove the foundation against reality
 
