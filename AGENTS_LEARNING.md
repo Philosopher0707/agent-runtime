@@ -878,3 +878,68 @@ care which.*
 of falling through to git. `if override:` is true for a string of spaces; `if override.strip():`
 is not. Fixed before it shipped, because a blank variable in a `.env` file is exactly the shape
 someone would write to mean "unset".
+
+### 2026-09-27 — Three proposed docs, and only one of them was missing
+
+**L62. A proposal that says "this is still valuable" is a claim to check, not a task to do.**
+
+The first proposal was to add `docs/decisions/0009-trust-model.md`, on the grounds that the
+README references it. It has existed since the first session — 2,094 bytes, with a trust table,
+an executable consequence and a known limitation.
+
+**And it could not have been missing.** `test_internal_markdown_links_resolve` checks every
+internal link, so a referenced document that does not exist is not a state this repository can
+be in. The tripwire added two commits earlier made the premise impossible before it was stated.
+
+*Lesson: the useful move on a proposal is to check its premises against the artefact. Two of
+these three were wrong about what existed, and the third — a trace schema doc — was right, which
+was only knowable by looking.*
+
+**L63. But the instinct behind the wrong premise found a real gap.**
+
+0009 is titled *the trust model* and covers three parties: the task, tool output, the final
+answer. **The caller is not in it** — and the caller is exactly where the confirmation token's
+"presence check, not capability" lives.
+
+It does not belong in that table, though. *"May this text be read as an instruction?"* and *"is
+this caller allowed to cause a side effect?"* are different axes with different failure modes,
+and merging them would have been the wrong fix. The addendum names the second axis and points at
+0020 — because a deployer who reads "the runtime has a confirmation gate" and concludes "the
+runtime has access control" has confused the two, in the dangerous direction.
+
+*Lesson: the right response to "this document is missing a thing" is sometimes "this document is
+about a different thing, and should say so".*
+
+**L64. The trace format had seven events and no document.**
+
+`run_started`, `context`, `model_call`, `tool_call`, `failure`, `run_finished`, and a conditional
+`redaction` — discoverable only by reading `TraceWriter`. The proposal's own instinct was the
+right one and worth recording: *read `trace.py` first, describe the actual envelope, not an
+invented one.* A trace doc written from memory describes a plausible format and is wrong in
+precisely the details someone would rely on.
+
+And the doc needed a check, because a prose list of events drifts — the same defect as the
+roadmap count and the `.env.example` variables. `test_trace_schema_doc.py` parses the writer's
+`emit` calls and the doc's table and asserts they are equal **in both directions**:
+
+- an event the writer emits and the doc omits — undocumented behaviour
+- an event the doc lists and the writer cannot emit — *a doc describing a format that does not
+  exist, which is worse than no doc, because someone will code against it*
+
+Verified non-vacuous by breaking each direction deliberately.
+
+*Lesson: the second direction is the one usually skipped. "Is everything documented?" and "is
+everything documented real?" are different questions, and only the first is the obvious one.*
+
+**L65. "When do we retire a fixture" had a clean answer that fell out of the architecture.**
+
+The proposal asked for it, and it was genuinely undocumented. But the rule was already implied:
+**replay the fixture.** If it still reproduces identically, the runtime is unchanged — so a
+*live* failure means the model moved, and the fixture should be retired or the case updated. If
+replay fails, the runtime regressed.
+
+Two causes with opposite responses, distinguished by one command, and it works because a
+fixture that still replays proves the runtime still does what it did.
+
+*Lesson: before designing a rule, check whether the system already implies it. This one needed
+writing down, not building.*

@@ -75,3 +75,31 @@ catch "the loop now takes one extra step".
 **Run the live suite in CI.** Rejected: it needs a key, it costs money per push, and a
 non-deterministic gate is one people learn to ignore. A gate that fails for reasons unrelated
 to the change is worse than no gate.
+
+## Addendum, 2026-09-27 — retiring a fixture
+
+A fixture is a claim that a behaviour should not regress. **That claim expires.** A model that
+behaved one way in September may behave differently in November, and the fixture will then fail
+for a reason that has nothing to do with this repository.
+
+**Replay distinguishes the two causes**, which is what makes retirement a rule rather than a
+judgement call:
+
+| replay the fixture | meaning | response |
+|---|---|---|
+| reproduces identically | the runtime is unchanged — so a *live* failure means the model moved | retire the fixture, or update the case |
+| fails | the runtime regressed | fix the runtime |
+
+That is the whole test, and it falls out of the architecture: a fixture that still replays
+proves the runtime still does what it did. So a live case failing *while its recorded trace
+still replays* is evidence about the model, not about the code — and the two demand opposite
+responses.
+
+Two details:
+
+- **Retire by replacing, not deleting.** Record a new fixture from the current model, so the
+  file's history shows what changed and when. A fixture deleted without a replacement loses the
+  only record that the behaviour was ever pinned.
+- **A fixture stale for a different reason — a schema-version bump — is refused by name**
+  ([decisions/0014](0014-trace-schema-version.md)), which is the correct outcome. Re-record it on
+  the new build rather than migrating it: the old trace is a fact about the old format.

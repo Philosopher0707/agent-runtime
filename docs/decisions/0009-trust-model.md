@@ -48,3 +48,21 @@ The leak probe compares a leading prefix of the system prompt (configurable leng
 default 120 characters, minimum 24). A model that paraphrases the prompt rather than
 echoing it is not caught. A judge model would be needed for that, and a judge in the hot
 path is a separate decision.
+
+## Addendum, 2026-09-27 — the second axis, and the party this table does not cover
+
+This decision covers **content trust**: what may be treated as an instruction. The task is
+trusted, tool output is not, the final answer is policed.
+
+There is a second axis, and the table above deliberately does not cover it: **authorisation** —
+whether the *caller* may ask for this at all. The caller is the fourth party, and it does not
+belong in that table, because "may this text be read as an instruction?" and "is this caller
+allowed to cause a side effect?" are different questions with different failure modes.
+
+That axis is decided in [decisions/0020](0020-auth-is-the-deployers-boundary.md): the runtime is
+a library, auth is the deployer's boundary, and `confirmation_token` is a presence check rather
+than a capability — it stops the *model*, not the caller.
+
+Stated here because the two are easy to conflate, and the confusion runs in the dangerous
+direction: a deployer who reads *"the runtime has a confirmation gate"* and concludes *"the
+runtime has access control"* has mistaken the second axis for the first.

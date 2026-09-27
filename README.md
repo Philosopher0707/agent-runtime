@@ -164,6 +164,8 @@ docs/         architecture, the roadmap, and the decision record
   your next move.
 - `docs/roadmap.md` — where this is going, in dependency order, and what it deliberately is
   not.
+- `docs/trace-schema.md` — the trace format, event by event, and the invariants that make
+  replay exact. Read this before writing anything that parses a trace.
 - `docs/architecture.md` — the component map, the authority boundaries, and the
   invariants with the tests that hold them.
 - `docs/decisions/` — one file per decision, numbered, append-only. Read
