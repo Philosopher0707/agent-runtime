@@ -84,6 +84,9 @@ else.
   overwritten.
 - **Every run emits one append-only trace, and the trace alone reconstructs the run.**
   Replay verifies each rebuilt prompt hash and never executes a tool.
+- **The prompt is never redacted; the trace can be.** Redacting the prompt would silently
+  change the task. A redacted trace cannot be replayed, so the two are mutually exclusive —
+  which is stated in the design rather than discovered later.
 
 ## Adding a capability
 

@@ -83,6 +83,7 @@ returns nothing, and every vendor string lives in `providers/`.
 | Replay never executes a tool | `RecordedDispatcher` | `test_replay.py` |
 | A class with no test is undiscovered | the taxonomy coverage test | `test_taxonomy.py::test_every_failure_class_has_a_test` |
 | CI and a local run are the same thing | the workflow calls `make ci` and runs nothing else | `test_ci_contract.py` |
+| Nothing is logged that redaction was asked to remove | `TraceWriter.emit` — the one chokepoint every event passes | `test_redaction.py` |
 
 ## The trust model
 
@@ -98,6 +99,12 @@ Three different levels of trust, applied consistently:
 Rationale in [decisions/0006](decisions/0006-untrusted-content-policy.md) and
 [decisions/0009](decisions/0009-trust-model.md). The detector behind the second rule is
 tiered and measured — [decisions/0011](decisions/0011-marker-precision-tiering.md).
+
+**Redaction is a fourth, separate boundary, and it applies to the opposite side.** The
+prompt is never redacted — redacting it would silently change the task. The *trace* is,
+because it is the durable artefact. A redacted trace cannot be replayed, so the two are
+mutually exclusive and the choice is explicit:
+[decisions/0012](decisions/0012-pii-context-and-redaction.md).
 
 ## Status is derived, not asserted
 
@@ -150,6 +157,10 @@ Stated rather than discovered later:
   Documented in [decisions/0008](decisions/0008-structured-output-subset.md).
 - **A wall-clock-bounded run only replays identically under a deterministic clock.**
   Replay takes an injectable clock for exactly this reason.
+- **Redaction is pattern-based, and off by default.** It catches shapes, not meanings: a
+  name in prose, or a number in a format the patterns do not list, passes through. Enabling
+  it makes the trace non-replayable, which is why the default is off rather than on
+  ([decisions/0012](decisions/0012-pii-context-and-redaction.md)).
 - **`openai_compat` is verified against a mock transport, not a live endpoint.** The
   parsing and error paths are covered; the vendor's actual behaviour is not.
 - **The injection scan is a tripwire with a measured precision limit.** It is lexical, so

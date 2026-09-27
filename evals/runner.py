@@ -12,6 +12,7 @@ contract to be real.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -215,10 +216,34 @@ def check(
 
     problems.extend(_check_tool_records(expect, output))
     problems.extend(_check_context(expect, trace))
+    problems.extend(_check_redaction(expect, trace))
 
     if "notes_written" in expect:
         wrote = any(path.is_file() for path in notes_root.rglob("*"))
         want("notes_written", wrote, expect["notes_written"])
+
+    return problems
+
+
+def _check_redaction(expect: dict[str, Any], trace: TraceRecord) -> list[str]:
+    """Redaction is checked against the *file*, not against a summary event.
+
+    ``trace_excludes`` serialises every recorded event and asserts a string is absent from
+    all of them. A check that only looked at the summary would pass while the data sat in
+    an event the summary does not describe.
+    """
+    problems: list[str] = []
+
+    if "trace_redacted" in expect:
+        present = trace.first("redaction") is not None
+        if present != expect["trace_redacted"]:
+            problems.append(f"trace_redacted: expected {expect['trace_redacted']}, got {present}")
+
+    if "trace_excludes" in expect:
+        blob = json.dumps([event.model_dump(mode="json") for event in trace.events])
+        for secret in expect["trace_excludes"]:
+            if secret in blob:
+                problems.append(f"trace_excludes: {secret!r} is present in the trace")
 
     return problems
 

@@ -16,8 +16,9 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, field_validator
 
+from runtime.redact import DEFAULT_PATTERNS, PATTERN_NAMES
 from runtime.schemas import Contract
 
 #: Repository-root-relative default for the worked-example configs.
@@ -82,12 +83,37 @@ class OutputConfig(Contract):
     max_repair_attempts: int = Field(default=1, ge=0)
 
 
+class RedactionConfig(Contract):
+    """What must be redacted before logging. See ``runtime/redact.py``.
+
+    ``off`` is the default, and that is a deliberate trade rather than an omission: a
+    redacted trace cannot be replayed, because replay rebuilds each prompt from the trace
+    and compares its hash against the recorded one. Turning redaction on buys a safer
+    durable record at the cost of the ability to reproduce the run.
+    """
+
+    mode: Literal["off", "trace"] = "off"
+    patterns: list[str] = Field(default_factory=lambda: list(DEFAULT_PATTERNS))
+
+    @field_validator("patterns")
+    @classmethod
+    def _only_known_patterns(cls, value: list[str]) -> list[str]:
+        unknown = sorted(set(value) - PATTERN_NAMES)
+        if unknown:
+            raise ValueError(
+                f"unknown redaction pattern(s): {unknown}. Known: {sorted(PATTERN_NAMES)}"
+            )
+        return list(dict.fromkeys(value))
+
+
 class GuardrailConfig(Contract):
     max_input_chars: int = Field(default=20_000, gt=0)
     #: How much of a tool result survives into the prompt.
     untrusted_max_chars: int = Field(default=4_000, gt=0)
     #: How much leading system-prompt text counts as a disclosure if echoed back.
     disclosure_prefix_chars: int = Field(default=120, gt=0)
+    #: What is redacted before it reaches the trace. Never the live prompt.
+    redaction: RedactionConfig = Field(default_factory=RedactionConfig)
 
 
 class Configuration(Contract):
