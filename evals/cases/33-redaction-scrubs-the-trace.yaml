@@ -1,0 +1,37 @@
+id: redaction-scrubs-the-trace
+description: >-
+  With redaction on, no pattern-shaped personal data reaches the trace file — while the
+  run itself is unaffected, and the trace says it was redacted.
+
+  The check reads the whole serialised trace rather than the summary event, so a leak in
+  an event the summary does not describe would still fail.
+config: default
+task: Look up dana@example.com in the customer list.
+overrides:
+  guardrails:
+    redaction:
+      mode: trace
+      patterns: [email, phone]
+tools:
+  lookup:
+    result: "Contact dana@example.com on 555-123-4567."
+stub:
+  script:
+    - tool_calls:
+        - name: lookup
+          arguments:
+            query: dana@example.com
+    - text: I emailed dana@example.com about the record.
+expect:
+  status: ok
+  failure_classes: []
+  model_calls: 2
+  steps: 2
+  trace_redacted: true
+  trace_excludes:
+    - dana@example.com
+    - 555-123-4567
+  tools:
+    - name: lookup
+      outcome: ok
+      attempts: 1

@@ -35,6 +35,16 @@ from runtime.trace import (
 DEFAULT_REPLAY_TRACE_DIR = ".traces/replay"
 
 
+class ReplayUnavailable(ReplayDivergence):
+    """The trace cannot be replayed, because redaction removed what replay needs.
+
+    A distinct type rather than a bare divergence: this is a *policy*, not a bug. A
+    divergence means the code changed; this means the trace was deliberately made
+    unfaithful. Reporting them the same way would send someone hunting for a defect that
+    is not there.
+    """
+
+
 class RecordedDispatcher:
     """Serves recorded tool records instead of running tools.
 
@@ -107,6 +117,17 @@ def replay_trace(
     clock: Callable[[], float] = time.monotonic,
 ) -> RunOutput:
     """Replay an already-parsed trace."""
+    config = recorded_config(trace)
+    redaction = config.guardrails.redaction
+    if redaction.mode != "off":
+        raise ReplayUnavailable(
+            f"trace {trace.trace_id} was written with redaction mode {redaction.mode!r}, so it "
+            f"cannot be replayed: replay rebuilds each prompt from the trace and compares its "
+            f"hash against the recorded one, and redaction removed the text that would match. "
+            f"This is the trade documented in runtime/redact.py, not a defect. Re-run the task "
+            f"with redaction off if you need a replayable trace."
+        )
+
     dispatcher = RecordedDispatcher(
         descriptors=recorded_descriptors(trace),
         records=tool_call_records(trace),
@@ -116,7 +137,7 @@ def replay_trace(
     with TraceWriter(trace_dir, new_trace_id()) as tracer:
         return run(
             recorded_task(trace),
-            config=recorded_config(trace),
+            config=config,
             provider=provider,
             tools=dispatcher,
             tracer=tracer,
@@ -128,6 +149,7 @@ __all__ = [
     "DEFAULT_REPLAY_TRACE_DIR",
     "RecordedDispatcher",
     "ReplayDivergence",
+    "ReplayUnavailable",
     "replay",
     "replay_trace",
 ]

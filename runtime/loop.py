@@ -32,6 +32,7 @@ from context.sanitize import assess, leaks_system_prompt, wrap_untrusted
 from providers.base import Provider, ProviderError, prompt_hash
 from runtime.budget import Budget, BudgetExceeded
 from runtime.config import Configuration
+from runtime.redact import Redactor
 from runtime.schemas import (
     FailureEvent,
     ModelCallRecord,
@@ -116,6 +117,12 @@ class _Orchestrator:
     # -- the run --------------------------------------------------------------
 
     def run(self) -> RunOutput:
+        # Redaction is a property of the record, not of the prompt: the model still sees
+        # the real data. Enabled before the first event so a trace is never half redacted.
+        redaction = self.config.guardrails.redaction
+        if redaction.mode == "trace":
+            self.tracer.enable_redaction(Redactor.from_names(redaction.patterns))
+
         self.tracer.run_started(
             task=self.task,
             config=self.config,

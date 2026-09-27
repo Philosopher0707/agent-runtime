@@ -52,6 +52,11 @@ cost to be wrong.
    once per run, and the run stops at the first question, so a second ambiguity is never
    reached. *Settle:* watch whether real tasks carry more than one ambiguity.
 7. **Is the 8,000-byte budget on `AGENTS.md` workable?** See 2026-09-27 / L7.
+8. **Does the redaction pattern set over-redact real traces?** It is deliberately
+   aggressive — a false positive costs a digit, a false negative leaks data — but a set that
+   redacts too much makes a trace useless, and that balance has never been measured against
+   real data. *Settle:* run it over a corpus of real traces and count how much useful
+   content it removes. The marker work (L10–L14) is the template.
 
 ## Log
 
@@ -352,3 +357,71 @@ it would have been noise.
 
 *Lesson: ask about the decisions that are hard to reverse or genuinely ambiguous, and
 decide the rest. A question is not a courtesy; it costs the other person a turn.*
+
+### 2026-09-27 — PII: one spec line, two opposite boundaries
+
+**L25. The spec's PII requirement is two requirements in one sentence.**
+
+*"State what may enter context and what must be redacted before logging"* — the first is a
+statement, the second is a mechanism, and they point in opposite directions. Read as one
+requirement it produces either a document with no mechanism or a mechanism with no stated
+boundary. Read as two, it produces the actual design: the prompt is never redacted, the
+trace is.
+
+*Lesson: when a requirement sentence has two verbs, it is usually two requirements.*
+
+**L26. The hard part was a conflict, not an implementation.**
+
+Redaction and replay are **mutually exclusive**: replay rebuilds each prompt from the trace
+and compares its hash against the recorded one, so a trace with the text removed cannot
+reproduce the prompt it recorded. I could have implemented redaction and let replay fail
+somewhere downstream with a confusing divergence error. Instead the refusal is explicit, the
+exception is a distinct type (`ReplayUnavailable`, so nobody hunts for a defect that is not
+there), and the message says what to do about it.
+
+*Lesson: a design conflict deserves more attention than a design feature. Features are
+additive and can be deferred; conflicts force a choice, and a conflict left unresolved does
+not disappear — it turns into a bug report about one of the two sides.*
+
+**L27. The failure economics are the inverse of the injection guardrail's, and that changed
+the patterns.**
+
+| | injection markers | redaction patterns |
+|---|---|---|
+| a false positive costs | a refused run | a digit missing from a log |
+| a false negative costs | a payload reaching the model | personal data on disk |
+| therefore | must be precise | must over-match |
+
+So the phone pattern is deliberately broad — `+` numbers, parenthesised numbers, 3-3-4
+grouping — while being shaped specifically **not** to eat an ISO date. A redactor that
+consumed every timestamp would make a trace useless for the one thing traces are for.
+
+*Lesson: "be careful with regexes" is not one rule. The same technique wants opposite
+tuning depending on which direction its errors cost, so work that out before writing the
+patterns.*
+
+**L28. `git checkout -- <file>` destroyed uncommitted work, and it was my second silent
+restore failure of the session.**
+
+I used it to undo a mutation during a verification experiment — on `runtime/trace.py`,
+which held the entire redaction implementation for that file. It reverted silently to HEAD.
+I only noticed because the next test run failed with `AttributeError`.
+
+Earlier in the same session, `cp` turned out to be aliased to `cp -i` and my backup/restore
+silently declined, leaving three mutated files in place (L19). Both times I had assumed the
+restore worked because the command returned success.
+
+*Lesson, and it should have been generalised the first time: after a mutation experiment,
+**verify the file is in the state you intended**, not merely that something happened. Back
+up to a temp path and restore with `command cp`; use `git checkout --` only on files with no
+uncommitted work. Two silent restore failures in one session is a pattern, not bad luck.*
+
+**L29. What is left.**
+
+The spec's remaining gap is **rollback** (*"one command, documented, and performed once
+before you need it"*), which depends on a deploy target this project does not have — so it
+needs scoping before it needs implementing. Beyond that the open questions above are all
+about the same thing: nothing here has met real data. No real model, no live endpoint, no
+real traces. The corpus work (L10–L14) and the CI (L15–L22) were both about replacing belief
+with measurement; the next unknown in that line is the first one that cannot be answered
+from inside this repository.

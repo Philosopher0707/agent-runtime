@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from runtime.config import Configuration
+from runtime.redact import RedactionCounts, Redactor
 from runtime.schemas import (
     ContextRecord,
     FailureEvent,
@@ -40,7 +41,13 @@ def new_trace_id() -> str:
 
 
 class TraceWriter:
-    """One file per run, one event per line, ``trace_id`` on every line."""
+    """One file per run, one event per line, ``trace_id`` on every line.
+
+    Redaction, when a configuration asks for it, is applied in :meth:`emit` — the single
+    place every event passes through. That is deliberate: it means a new event kind cannot
+    be added later and quietly bypass the policy. The *prompt* is never redacted; only
+    what is written down is. See ``runtime/redact.py``.
+    """
 
     def __init__(
         self,
@@ -57,19 +64,47 @@ class TraceWriter:
         self._handle = self.path.open("a", encoding="utf-8")
         self._closed = False
         self._count = 0
+        self._redactor: Redactor | None = None
+        self._redaction_counts = RedactionCounts()
 
     @property
     def event_count(self) -> int:
         return self._count
 
+    @property
+    def redacting(self) -> bool:
+        return self._redactor is not None
+
+    def enable_redaction(self, redactor: Redactor) -> None:
+        """Turn redaction on for the rest of this trace.
+
+        Must be called before the first event: a trace that is half redacted is worse than
+        one that is not redacted at all, because the difference is invisible on inspection.
+        """
+        if self._closed:
+            raise TraceError("trace is closed")
+        if self._count:
+            raise TraceError(
+                f"redaction must be enabled before the first event; "
+                f"{self._count} event(s) are already written"
+            )
+        self._redactor = redactor
+
+    def redaction_summary(self) -> dict[str, Any]:
+        return self._redaction_counts.as_dict()
+
     def emit(self, event: str, payload: dict[str, Any] | None = None) -> TraceEvent:
         if self._closed:
             raise TraceError("trace is closed")
+        body = payload or {}
+        if self._redactor is not None:
+            body, counts = self._redactor.value(body)
+            self._redaction_counts.merge(counts)
         record = TraceEvent(
             ts=self._now(),
             trace_id=self.trace_id,
             event=event,
-            payload=payload or {},
+            payload=body,
         )
         line = json.dumps(record.model_dump(mode="json"), sort_keys=True, ensure_ascii=False)
         self._handle.write(line + "\n")
@@ -129,6 +164,20 @@ class TraceWriter:
 
     def run_finished(self, output: RunOutput) -> None:
         self.emit("run_finished", output.model_dump(mode="json"))
+        if self._redactor is not None:
+            # The summary belongs to a *completed* run, not to a closed file, so it is
+            # written here rather than in close(). A reader who has run_finished has the
+            # counts; a trace with no run_finished is incomplete anyway, which is the same
+            # thing it already says. The *policy* is visible either way, because the
+            # configuration block in run_started carries the redaction mode.
+            self.emit(
+                "redaction",
+                {
+                    "mode": "trace",
+                    "patterns": [pattern.name for pattern in self._redactor.patterns],
+                    **self._redaction_counts.as_dict(),
+                },
+            )
 
     def close(self) -> None:
         if not self._closed:

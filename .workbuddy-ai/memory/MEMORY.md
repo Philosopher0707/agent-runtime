@@ -25,6 +25,11 @@ named in `runtime/factory.py` and nowhere else.
 - **Do not pin `UV_PYTHON` in the Makefile.** `uv` reads `.python-version`. A default of
   `command -v python3` looks harmless and breaks CI, where the runner's `python3` may be
   older than the project requires.
+- **Redaction and replay are mutually exclusive — do not "fix" one by weakening the
+  other.** The prompt is never redacted (it would silently change the task); the trace is,
+  at the single `TraceWriter.emit` chokepoint. A redacted trace refuses replay with
+  `ReplayUnavailable`. `guardrails.redaction.mode` is `off` by default precisely because
+  turning it on costs replayability. Decision: `docs/decisions/0012`.
 - **The injection markers are measured, not asserted.** `make markers` grades the rule
   against `evals/markers.py` and exits non-zero below threshold; the same thresholds are
   enforced in `tests/test_marker_precision.py`, so the report and the tripwire cannot
