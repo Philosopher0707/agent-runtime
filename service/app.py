@@ -23,7 +23,13 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
-from runtime.config import DEFAULT_CONFIG_DIR, ConfigError, available_configs, load_config_by_name
+from runtime.config import (
+    DEFAULT_CONFIG_DIR,
+    ConfigError,
+    available_configs,
+    load_config_by_name,
+    load_env_file,
+)
 from runtime.factory import (
     DEFAULT_NOTES_ROOT,
     DEFAULT_TRACE_DIR,
@@ -97,6 +103,7 @@ def create_app(
 
 
 def main() -> int:
+    load_env_file()
     import uvicorn
 
     host = os.environ.get("AGENT_HOST", "127.0.0.1")

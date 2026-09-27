@@ -12,7 +12,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from runtime.config import DEFAULT_CONFIG_DIR, available_configs
+from runtime.config import DEFAULT_CONFIG_DIR, available_configs, load_env_file
 from runtime.factory import DEFAULT_NOTES_ROOT, DEFAULT_TRACE_DIR, run_task
 from runtime.replay import replay
 from runtime.schemas import RunOutput, RunRequest
@@ -52,6 +52,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    load_env_file()
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.command is None:

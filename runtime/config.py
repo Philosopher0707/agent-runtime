@@ -206,6 +206,66 @@ def read_api_key(provider: ProviderConfig) -> str | None:
     return os.environ.get(provider.api_key_env) or None
 
 
+#: The file a local run reads environment variables from, if it exists.
+ENV_FILE = Path(".env")
+
+
+def parse_env_file(text: str) -> dict[str, str]:
+    """Parse the ``.env`` shapes people actually write.
+
+    Deliberately small: ``KEY=value``, ``export KEY=value``, quoted values, comments on
+    their own line, and a trailing ``#`` comment after an unquoted value. No
+    interpolation, no multiline values, no shell evaluation — a config file that can run
+    code is a different kind of thing from a config file.
+    """
+    values: dict[str, str] = {}
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].lstrip()
+
+        key, separator, value = line.partition("=")
+        if not separator:
+            continue
+        key = key.strip()
+        if not key:
+            continue
+
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        elif " #" in value:
+            value = value.split(" #", 1)[0].rstrip()
+
+        values[key] = value
+    return values
+
+
+def load_env_file(path: str | Path | None = None) -> int:
+    """Load ``.env`` into the environment, and return how many variables were set.
+
+    **A real environment variable always wins.** That is the twelve-factor precedence, and
+    it is what makes a shell export usable as a temporary override of the file.
+
+    This exists because it was missing. ``.env.example`` and a ``.gitignore`` entry for
+    ``.env`` both imply the convention, and nothing implemented it — so a key placed in
+    ``.env`` was silently ignored, the provider was called unauthenticated, and the only
+    symptom was a 401 from the vendor with nothing pointing at the cause.
+    """
+    path = Path(path) if path is not None else ENV_FILE
+    if not path.is_file():
+        return 0
+
+    applied = 0
+    for key, value in parse_env_file(path.read_text(encoding="utf-8")).items():
+        if key not in os.environ:
+            os.environ[key] = value
+            applied += 1
+    return applied
+
+
 def iter_tool_names(configs: Iterable[Configuration]) -> set[str]:
     """Every tool named by any configuration. Useful for catalogue coverage checks."""
     return {name for config in configs for name in config.tools}
@@ -213,6 +273,7 @@ def iter_tool_names(configs: Iterable[Configuration]) -> set[str]:
 
 __all__ = [
     "DEFAULT_CONFIG_DIR",
+    "ENV_FILE",
     "ConfigError",
     "Configuration",
     "ContextConfig",
@@ -224,6 +285,8 @@ __all__ = [
     "config_path",
     "load_config",
     "load_config_by_name",
+    "load_env_file",
+    "parse_env_file",
     "read_api_key",
     "validate_config",
 ]
