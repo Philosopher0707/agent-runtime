@@ -188,7 +188,10 @@ fuller list in `docs/architecture.md`.
   tell a payload from prose that *quotes* one, and it misses payloads written as ordinary
   prose. The envelope, not the scan, is the primary defence.
 - **`confirmation_token` is a presence check, not a capability.** It stops the *model* from
-  authorising a side effect. It does not authenticate the caller — `POST /run` has no auth.
+  authorising a side effect. It does not authenticate the caller — and that is a deliberate
+  boundary, not a gap: the runtime is a library and auth is the deployer's, with the service
+  bound to loopback by default. See
+  [decisions/0020](docs/decisions/0020-auth-is-the-deployers-boundary.md).
 - **`refused` means the provider said the model refused.** A model that declines *in words*
   without setting the vendor flag is reported as `ok`, with the refusal as the output. The
   live suite found exactly this on its first run.

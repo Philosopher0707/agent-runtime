@@ -8,8 +8,11 @@ rather than by reading every file.
 
 from __future__ import annotations
 
+import os
+import subprocess
 import time
 from collections.abc import Callable, Iterable
+from functools import lru_cache
 from pathlib import Path
 
 from providers.base import Provider
@@ -102,9 +105,44 @@ def run_task(
                 tracer=tracer,
                 confirmation_token=request.confirmation_token,
                 clock=clock,
+                revision=current_revision(),
             )
     finally:
         registry.close()
+
+
+@lru_cache(maxsize=4)
+def current_revision(root: str | None = None) -> str | None:
+    """Which build this is, as ``git describe --always --dirty``.
+
+    Resolved at the composition root rather than in the loop: "which build am I" is a
+    property of the *deployment*, not of a run, and the loop must not shell out. Cached,
+    because a process has one revision — the one it started with.
+
+    ``-dirty`` matters as much as the hash. A trace from a dirty tree does not correspond to
+    any commit, so recording the hash alone would imply a reproducibility that is not there.
+
+    Returns ``None`` outside a repository, which is not an error: this is a library and may
+    be installed from a wheel with no git metadata at all. ``AGENT_REVISION`` overrides it,
+    for a container that has the revision baked in at build time.
+    """
+    override = (os.environ.get("AGENT_REVISION") or "").strip()
+    if override:
+        return override
+    try:
+        result = subprocess.run(
+            ["git", "describe", "--always", "--dirty"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,  # a hung git must not hang a run
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
 
 
 __all__ = [
@@ -112,5 +150,6 @@ __all__ = [
     "DEFAULT_TRACE_DIR",
     "build_provider",
     "build_tools",
+    "current_revision",
     "run_task",
 ]

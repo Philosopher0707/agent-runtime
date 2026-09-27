@@ -72,6 +72,7 @@ def execute(
     tools: Iterable[Tool] = (),
     confirmation_token: str | None = None,
     clock: Callable[[], float] | None = None,
+    revision: str | None = None,
     registry: Any = None,
     provider: Any = None,
     budget: Any = None,
@@ -115,6 +116,7 @@ def execute(
             confirmation_token=confirmation_token,
             clock=clock or _monotonic,
             budget=budget,
+            revision=revision,
         )
     finally:
         if owns_registry:

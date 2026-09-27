@@ -93,3 +93,34 @@ def test_a_side_effect_is_refused_without_a_token(client: TestClient) -> None:
     output = RunOutput.model_validate(response.json())
     assert output.status == "refused"
     assert output.failures[0].guardrail == "confirmation_missing"
+
+
+# --------------------------------------------------------------- the auth boundary
+
+
+def test_the_service_binds_loopback_by_default() -> None:
+    """Decision 0020: auth is the deployer's boundary, and this is what makes that safe.
+
+    `POST /run` has no authentication. Out of the box the service is not reachable off-host,
+    so exposing it is a choice a deployer makes and owns — rather than a default they inherit
+    without noticing.
+
+    Asserted rather than trusted, because a one-word change here would quietly turn a library
+    into an open endpoint on every interface.
+    """
+    source = (REPO_ROOT / "service" / "app.py").read_text(encoding="utf-8")
+    assert 'os.environ.get("AGENT_HOST", "127.0.0.1")' in source, (
+        "the default bind address is no longer loopback — see decisions/0020"
+    )
+
+
+def test_the_run_endpoint_takes_no_credential(client: TestClient) -> None:
+    """Stated as a test so the absence is a decision rather than an oversight.
+
+    If this ever starts failing because a credential *was* added, decision 0020 needs
+    revisiting: the runtime having an opinion about identity is a different product.
+    """
+    from runtime.schemas import RunRequest
+
+    assert "auth" not in RunRequest.model_fields
+    assert set(RunRequest.model_fields) == {"task", "config", "trace_id", "confirmation_token"}
