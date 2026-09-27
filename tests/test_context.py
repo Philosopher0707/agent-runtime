@@ -7,19 +7,39 @@ the assembler past both thresholds and check the pair is still there.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import pytest
 
 from context.assembler import ContextAssembler, ContextUnfit, summarise
 from runtime.config import ContextConfig
+from runtime.schemas import ToolDescriptor
 
 
 def make_assembler(
-    *, system: str = "S" * 40, task: str = "T" * 40, **overrides
+    *,
+    system: str = "S" * 40,
+    task: str = "T" * 40,
+    tool_schemas: Sequence[ToolDescriptor] = (),
+    **overrides,
 ) -> ContextAssembler:
     config = ContextConfig(
         **{"max_prompt_tokens": 10_000, "summarise_above_tokens": 9_000, **overrides}
     )
-    return ContextAssembler(system_prompt=system, task=task, config=config)
+    return ContextAssembler(
+        system_prompt=system, task=task, config=config, tool_schemas=tool_schemas
+    )
+
+
+def schema(name: str = "tool") -> ToolDescriptor:
+    return ToolDescriptor(
+        name=name,
+        description="Does a thing, at some length, so the schema is not trivially small.",
+        parameters={"type": "object", "properties": {"a": {"type": "string"}}},
+        side_effect=False,
+        idempotent=True,
+        optional=True,
+    )
 
 
 def test_the_system_prompt_and_task_are_always_present() -> None:
@@ -136,3 +156,79 @@ def test_estimation_uses_the_configured_ratio() -> None:
     for assembler in (coarse, fine):
         assembler.add_tool_result(name="tool", envelope="R" * 400)
     assert coarse.build(step=1).record.estimated_tokens > fine.build(step=1).record.estimated_tokens
+
+
+# --------------------------------------------- the fixed per-request overhead
+
+
+def test_tool_schemas_are_counted() -> None:
+    """They are sent as the request's `tools` field, so the provider bills them.
+
+    Omitting them under-counted the fixed overhead by about 600 tokens against a real
+    endpoint, which meant both thresholds operated on a number roughly ten times too small.
+    """
+    without = make_assembler().build(step=1).record.estimated_tokens
+    with_schemas = make_assembler(tool_schemas=[schema()]).build(step=1).record.estimated_tokens
+    assert with_schemas > without
+
+
+def test_more_schemas_cost_more() -> None:
+    one = make_assembler(tool_schemas=[schema("a")]).build(step=1).record.estimated_tokens
+    three = (
+        make_assembler(tool_schemas=[schema(n) for n in "abc"])
+        .build(step=1)
+        .record.estimated_tokens
+    )
+    assert three > one
+
+
+def test_schemas_use_their_own_ratio_not_the_prose_one() -> None:
+    """JSON tokenises at roughly half the characters-per-token of prose."""
+    coarse = make_assembler(schema_chars_per_token=8.0, tool_schemas=[schema()])
+    fine = make_assembler(schema_chars_per_token=2.0, tool_schemas=[schema()])
+    assert fine.build(step=1).record.estimated_tokens > coarse.build(step=1).record.estimated_tokens
+
+
+def test_no_tools_means_no_overhead() -> None:
+    assert (
+        make_assembler(tool_schemas=[]).build(step=1).record.estimated_tokens
+        == make_assembler().build(step=1).record.estimated_tokens
+    )
+
+
+def test_the_soft_threshold_measures_the_transcript_not_the_overhead() -> None:
+    """Summarising a tiny tool result to make room for a schema that never changes would
+    be absurd — so the soft threshold ignores the fixed part.
+
+    The threshold is set *below the overhead but above the transcript*: if the soft
+    threshold measured the total, this run would summarise; measuring the transcript, it
+    does not.
+    """
+    schemas = [schema(n) for n in "abc"]
+    overhead = make_assembler(tool_schemas=schemas).build(step=1).record.estimated_tokens
+
+    assembler = make_assembler(
+        tool_schemas=schemas,
+        summarise_above_tokens=overhead // 2,  # below the overhead, above a short result
+        summary_chars=40,
+    )
+    assembler.add_tool_result(name="tool", envelope="short result")
+    built = assembler.build(step=1)
+
+    assert built.record.summarised_results == 0, "the fixed overhead triggered summarisation"
+    assert built.record.estimated_tokens > overhead // 2, "the overhead is still in the total"
+
+
+def test_the_hard_ceiling_measures_the_whole_request() -> None:
+    """The ceiling is about what the model has to fit, so it includes the overhead."""
+    overhead = make_assembler(tool_schemas=[schema(n) for n in "abc"]).build(step=1)
+    with pytest.raises(ContextUnfit):
+        make_assembler(
+            tool_schemas=[schema(n) for n in "abc"],
+            max_prompt_tokens=overhead.record.estimated_tokens - 1,
+        ).build(step=1)
+
+
+def test_a_ceiling_below_the_overhead_refuses_rather_than_lying() -> None:
+    with pytest.raises(ContextUnfit):
+        make_assembler(tool_schemas=[schema(n) for n in "abc"], max_prompt_tokens=10).build(step=1)

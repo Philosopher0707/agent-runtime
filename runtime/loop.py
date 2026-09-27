@@ -139,6 +139,7 @@ class _Orchestrator:
             system_prompt=self.config.system_prompt,
             task=self.task,
             config=self.config.context,
+            tool_schemas=self._descriptors,
         )
 
         while True:

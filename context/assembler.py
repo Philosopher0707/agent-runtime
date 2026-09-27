@@ -13,13 +13,27 @@ with the numbers attached.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 
 from providers.base import estimate_tokens
 from runtime.config import ContextConfig
-from runtime.schemas import ContextRecord, MessageRole, ToolCallRequest
+from runtime.schemas import ContextRecord, MessageRole, ToolCallRequest, ToolDescriptor
+
+
+def _schema_tokens(schemas: Sequence[ToolDescriptor], config: ContextConfig) -> int:
+    """The fixed per-request cost of the tool schemas.
+
+    Counted separately from the messages because they are serialised as JSON and JSON
+    tokenises at roughly half the characters-per-token of prose — see
+    ``ContextConfig.schema_chars_per_token``.
+    """
+    if not schemas:
+        return 0
+    serialised = json.dumps([schema.model_dump(mode="json") for schema in schemas])
+    return estimate_tokens(serialised, config.schema_chars_per_token)
 
 
 class ContextUnfit(Exception):
@@ -61,7 +75,15 @@ class AssembledContext:
 
 
 class ContextAssembler:
-    """Builds the prompt. Never drops the system prompt or the task."""
+    """Builds the prompt. Never drops the system prompt or the task.
+
+    ``tool_schemas`` are counted even though they are not *messages*: they are sent on
+    every request as the ``tools`` field, and the provider bills them as prompt tokens.
+    Leaving them out under-counted the fixed per-request overhead by about 600 tokens on
+    a real endpoint — enough that the summarise and drop thresholds were operating on a
+    number roughly ten times too small, so context would overflow before the runtime
+    noticed it was close.
+    """
 
     def __init__(
         self,
@@ -69,11 +91,13 @@ class ContextAssembler:
         system_prompt: str,
         task: str,
         config: ContextConfig,
+        tool_schemas: Sequence[ToolDescriptor] = (),
     ) -> None:
         self._system_prompt = system_prompt
         self._task = task
         self._config = config
         self._turns: list[Turn] = []
+        self._overhead_tokens = _schema_tokens(tool_schemas, config)
 
     @property
     def turn_count(self) -> int:
@@ -112,16 +136,31 @@ class ContextAssembler:
         soft = self._config.summarise_above_tokens
         hard = self._config.max_prompt_tokens
 
-        def estimated() -> int:
-            return (
-                estimate_tokens(self._system_prompt, chars_per_token)
-                + estimate_tokens(self._task, chars_per_token)
-                + sum(estimate_tokens(turn.content, chars_per_token) for turn in turns)
-            )
+        # Two measurements, because the two thresholds ask different questions.
+        #
+        # `variable` is the transcript, which is the part that *grows*. The soft threshold
+        # compares against this: summarising because the fixed overhead is large would
+        # mean collapsing a one-token tool result to make room for a schema that never
+        # changes.
+        #
+        # `total` is the whole request — overhead included — which is the part the provider
+        # actually bills and the model actually has to fit. The hard ceiling compares
+        # against this, because that is the number that overflows a context window.
+        protected = (
+            self._overhead_tokens
+            + estimate_tokens(self._system_prompt, chars_per_token)
+            + estimate_tokens(self._task, chars_per_token)
+        )
+
+        def variable() -> int:
+            return sum(estimate_tokens(turn.content, chars_per_token) for turn in turns)
+
+        def total() -> int:
+            return protected + variable()
 
         # 1. Soft threshold: summarise tool results, oldest first.
         summarised = 0
-        while estimated() > soft:
+        while variable() > soft:
             index = _first_unsummarised_tool(turns)
             if index is None:
                 break
@@ -134,14 +173,11 @@ class ContextAssembler:
 
         # 2. Hard ceiling: drop the oldest turns. Never the protected pair.
         dropped = 0
-        while estimated() > hard and turns:
+        while total() > hard and turns:
             turns.pop(0)
             dropped += 1
 
         # 3. If the protected pair alone does not fit, refuse to pretend.
-        protected = estimate_tokens(self._system_prompt, chars_per_token) + estimate_tokens(
-            self._task, chars_per_token
-        )
         if protected > hard:
             raise ContextUnfit(estimated_tokens=protected, max_prompt_tokens=hard)
 
@@ -160,7 +196,7 @@ class ContextAssembler:
             record=ContextRecord(
                 step=step,
                 message_count=len(messages),
-                estimated_tokens=estimated(),
+                estimated_tokens=total(),
                 summarised_results=summarised,
                 dropped_messages=dropped,
                 system_prompt_present=True,

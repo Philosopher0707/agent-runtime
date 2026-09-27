@@ -33,19 +33,24 @@ stub does: one tool call per turn, arguments that validate, text that parses. If
 model does not, the failure taxonomy is a hypothesis and the eval harness is measuring a
 fiction. This is the cheapest step that can invalidate the most.
 
-**What it needs that does not exist yet:**
+**Partially done, 2026-09-27.** A real endpoint has now run the loop end to end — a plain
+answer and a native tool call, both correct — and a real trace replayed exactly. It found
+two defects immediately (the token estimate omitted the tool schemas and used the prose
+ratio for JSON; the two context thresholds measured the same quantity when they should
+measure different ones). Both fixed, with the numbers in
+[decisions/0005](decisions/0005-token-estimation.md).
 
-- An API key (`configs/openai_compat.yaml` is written but has never been pointed at a live
-  endpoint).
+**What is left of this step:**
+
 - **A second scorer mode.** The 33 cases assert *exact* outcomes — `output_exact`,
   `model_calls: 2`, `attempts: 1` — because the stub is deterministic. A real model is not,
   so a live run must assert *properties*: the status, the failure classes, whether a tool
   was called, whether the guardrail held. The stub suite stays as the contract test; the
   live suite is a separate thing, and mixing them would make both meaningless.
-- A recorded-trace fixture from a real run, so the live suite can be replayed in CI without
-  a key.
-
-**Trigger:** an API key. Nothing else blocks it.
+- **A recorded-trace fixture from a real run**, so the live suite can be replayed in CI
+  without a key.
+- **The taxonomy against a real model's failure modes** — does it ever produce something
+  the ten rows cannot describe?
 
 ### 2. Rollback, scoped to a local-only project
 
