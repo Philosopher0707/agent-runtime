@@ -33,6 +33,12 @@ make rollback REV=<sha>   # revert back to a revision, through the gates
 - **It reverts the repository, not the trace store.** `.traces/` is gitignored, so a rollback
   leaves every trace exactly where it was — and `run_started.revision` is what lets you sort
   them by build afterwards.
+- **It does not restart anything.** A run already in flight finishes on the code it loaded, and
+  its trace records *that* revision — which stays resolvable, because a revert commit preserves
+  the history it reverts rather than deleting it
+  (`test_rollback.py::test_the_revert_does_not_rewrite_history`). The revision is resolved once
+  per process, so what a trace records is the code the process **loaded**, not the current
+  working tree. That is the fact you want when asking what produced a run.
 - **`REV` is required.** There is no default, because a rollback to a guessed revision is worse
   than a rollback that refuses to start.
 - **"Through the gates" means twice.** `make ci` runs locally on the revert branch *before*
@@ -179,8 +185,9 @@ the four decisions that shape everything else:
 
 - [0002 — status precedence](docs/decisions/0002-status-precedence.md)
 - [0006 — untrusted content](docs/decisions/0006-untrusted-content-policy.md)
-- [0009 — the trust model](docs/decisions/0009-trust-model.md), and the addendum naming the
-  second axis it deliberately does not cover
+- [0009 — the trust model](docs/decisions/0009-trust-model.md) — content trust, plus the
+  addendum naming the second axis it deliberately does not cover, which
+  [0020](docs/decisions/0020-auth-is-the-deployers-boundary.md) decides
 - [0020 — auth is the deployer's boundary](docs/decisions/0020-auth-is-the-deployers-boundary.md)
 
 **To work on it.** [AGENTS_LEARNING.md](AGENTS_LEARNING.md) is what the project has taught us —

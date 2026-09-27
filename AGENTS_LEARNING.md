@@ -130,9 +130,11 @@ looking at the code that failed.*
 
 "Treat tool output as untrusted" is easy to over-apply: scan *everything* and you refuse a
 user for phrasing their own request badly. The task comes from the principal and is
-trusted; only tool output is not. Writing a test that asserts the task is **not** refused
-(`test_task_text_is_not_scanned_as_injection`) turned an assumption into an executable
-boundary.
+trusted; only tool output is not. Writing a case that asserts the task is **not** refused
+(`evals/cases/24-task-text-is-not-scanned-as-injection.yaml`) turned an assumption into an
+executable boundary.
+
+*Correction, 2026-09-27: this entry originally cited `test_taxonomy.py::test_task_text_is_not_scanned_as_injection`, a pytest test that has never existed. The behaviour was always covered — as an eval case. Fixed in place rather than superseded, because a false pointer is a factual error, not a revised conclusion. See L70.*
 
 *Lesson: a security boundary that is not asserted in the direction it does **not** apply
 will get widened by the next person who reads it as a blanket rule.*
@@ -999,3 +1001,52 @@ first time it caught the guard itself.
 
 *Lesson: the assertion that a check found something is not ceremony. A pattern that silently
 matches nothing looks exactly like a pattern that finds nothing wrong.*
+
+**L70. The docs cited a test that has never existed, and it was cited as *proof*.**
+
+Adding a citation check — every `test_*` the docs name must exist — found one on its first run:
+`test_taxonomy.py::test_task_text_is_not_scanned_as_injection`, cited in
+[decisions/0009](docs/decisions/0009-trust-model.md) and in L6 above as the executable proof of
+the trust model.
+
+**It has never existed.** Not collected by pytest, not defined anywhere in `tests/`.
+
+The *claim* was true the whole time — the behaviour is covered, by the eval case
+`evals/cases/24-task-text-is-not-scanned-as-injection.yaml`, which passes on every run. Only the
+citation was wrong, and it had been wrong since the first session, in two documents, pointing at
+the single most load-bearing claim in the trust model.
+
+Both are fixed, and the log entry carries a correction note rather than being rewritten: a false
+pointer is a factual error, not a revised conclusion, and the append-only rule exists to stop
+conclusions being quietly changed.
+
+*Lesson: a citation of a test reads as evidence, and evidence that does not exist is worse than
+no evidence — it stops the reader looking. The check that found this took fifteen lines, and the
+same pattern now covers test **files** (19 cited, all real), decision ids in the README, and
+`make` targets. Every one of those is a claim the docs make about the code, and none of them was
+checked before today.*
+
+**L71. And the new check's own helpers were collected as tests.**
+
+Two helpers in the new test file were called `test_files()` and `test_functions()`. pytest
+collected both as tests. They ran, returned a `set`, and **passed** — because a test that
+returns a non-None value is a warning, not a failure.
+
+The count was two higher than it should have been and the warnings were the only evidence.
+Renamed to `suite_files()` / `suite_functions()`; the suite went from 401 to 399.
+
+*Lesson: a helper must not look like a test, for the same reason `tests/helpers.py` is not
+collected. And "it passed" is not the same as "it was a test" — a function that runs and returns
+something has not asserted anything.*
+
+**L72. The check needed one exemption, and the exemption is the interesting part.**
+
+`AGENTS_LEARNING.md` now names the nonexistent test in order to explain that it never existed —
+and the check flagged its own author's log entry.
+
+The resolution is a principle worth keeping: **the reference docs (README, the spec, `docs/`)
+must resolve every citation, because they make claims a reader acts on. The learning log is
+exempt, because it is a record of mistakes and must be free to name them.**
+
+Excluding the log still catches the false citation this check was written for: it appeared in
+both a decision record and the log, and the decision record is checked.
