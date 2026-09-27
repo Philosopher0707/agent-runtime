@@ -584,3 +584,79 @@ remembered.**
 
 *Lesson: "load the config" is not a step, it is a precondition. A precondition that each of
 six files must independently satisfy is a defect waiting for the seventh file.*
+
+### 2026-09-27 — The first real model, and what four calls found
+
+**L41. The runtime works against a real model.** OpenRouter, first run: a plain answer in
+1.7 seconds for $0.00034. Then a tool call — the model extracted `21 * 2` from prose, called
+the calculator, got `42`, and answered. Native tool calling went through the adapter
+unchanged. The stub was a specification of a model; the model matched the specification.
+
+**L42. Replay holds for a real provider — demonstrated, not reasoned.** Open question #3 had
+been "the reasoning says yes, but no real-provider trace has ever been replayed". It now
+has: the canonical projection is identical and the prompt hashes match. The strongest
+invariant in the project survives contact with a real endpoint, which is the best evidence
+any of it has had.
+
+**L43. The token estimate was wrong by 5.5x–12.6x, and four real calls found it.**
+
+| task | estimated | actual | ratio |
+|---|---|---|---|
+| "Say OK." | 52 | 657 | **12.6x** |
+| a prose question | 65 | 666 | 10.2x |
+| one tool call | 195 | 1416 | 7.3x |
+| two tool calls | 277 | 1511 | 5.5x |
+
+Two causes, one trivial and one not:
+
+1. **The tool schemas were not counted at all.** They are sent as the request's `tools`
+   field on every call; the provider bills them as prompt tokens; the assembler only ever
+   counted `messages`.
+2. **`chars/4` is the wrong ratio for JSON.** Measured: 1220 characters of schema cost
+   roughly 610 tokens — **2.0 characters per token** — because JSON is punctuation and short
+   repeated keys. Prose measured about 4.6, so the prose ratio was fine.
+
+After the fix the estimate is at parity: 662 against 657, and 1422 against 1422.
+
+*Why this mattered, and why no test could have caught it:* the **budget** was never wrong —
+it charges the provider's reported usage. But the **context thresholds** ran on the
+estimate, so summarise and drop were operating on a number ten times too small. Context
+could overflow before the runtime noticed it was close. Every test used the same wrong
+estimate on both sides, so every test agreed with itself.
+
+**L44. Fixing it exposed a design mistake in the thresholds themselves.**
+
+Counting the overhead made summarisation fire immediately on configs with small soft
+thresholds — collapsing a three-token tool result to make room for a schema that never
+changes. The two thresholds had been asking different questions with the same number:
+
+| threshold | measures | because |
+|---|---|---|
+| soft, `summarise_above_tokens` | the transcript | that is the part that **grows** |
+| hard, `max_prompt_tokens` | the whole request | that is what the model must **fit** |
+
+Splitting them fixed the failing tests and is a clearer statement of what each is for.
+
+**L45. Three tests failed, and none of them were wrong about the code.**
+
+They were wrong about the *world*: their ceilings (400 tokens) sat below the fixed overhead
+(620). They had been calibrated against an estimate that omitted 620 tokens, so they had
+been passing for the wrong reason. `ContextUnfit` was correct — the config asked for a
+prompt smaller than its own tool schemas.
+
+*Lesson: when a measurement changes, the tests encoding the old measurement fail, and they
+fail looking exactly like regressions. Read each one and ask whether it was testing the code
+or testing the number.*
+
+**L46. A loud failure that does not explain itself still costs a debugging session.**
+
+The field `api_key_env` names the environment variable that holds the key. It reads like
+"the API key (env)". It was emptied while setting up the real endpoint, and the error was
+`Input should be a valid string [input_value=None]` — accurate, and useless.
+
+It now says what the field is for, where the key goes, and why it must not go in a
+configuration file. That is a validator doing the job only it can do: the schema knows the
+field, the person knows the mistake, and nothing else connects them.
+
+*Lesson: for a field whose name invites a specific misunderstanding, the validation message
+is the documentation that will actually be read.*

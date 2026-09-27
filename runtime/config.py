@@ -38,6 +38,26 @@ class ProviderConfig(Contract):
     #: Name of the environment variable holding the key. The key itself never
     #: enters a config, a prompt, a log line, or a trace.
     api_key_env: str = "AGENT_API_KEY"
+
+    @field_validator("api_key_env")
+    @classmethod
+    def _must_name_a_variable(cls, value: str) -> str:
+        """Refuse an empty name with an explanation, because the mistake is an easy one.
+
+        The field reads like "the API key (env)" and it is not — it names the environment
+        variable that holds the key. Someone emptied it while setting up a real endpoint,
+        and the schema error they got was `Input should be a valid string`, which does not
+        say what the field is for. Failing loudly is right; failing *informatively* is
+        better, and this is the one place that can say it.
+        """
+        if not value.strip():
+            raise ValueError(
+                "api_key_env names the environment variable that holds the key "
+                "(for example AGENT_API_KEY). It does not hold the key itself. Put the key "
+                "in .env, or export it — never in a configuration file, which is committed."
+            )
+        return value.strip()
+
     price_input_per_mtok: float = Field(default=0.0, ge=0.0)
     price_output_per_mtok: float = Field(default=0.0, ge=0.0)
     timeout_s: float = Field(default=60.0, gt=0.0)
@@ -63,7 +83,19 @@ class BudgetConfig(Contract):
 class ContextConfig(Contract):
     max_prompt_tokens: int = Field(default=8000, gt=0)
     #: Token estimation is a heuristic by design — see docs/decisions/0005.
+    #:
+    #: Calibrated against a real endpoint: English prose tokenises at roughly 4.6
+    #: characters per token, so 4.0 is slightly conservative, which is the safe
+    #: direction. Under-estimating means the runtime thinks it has room it does not.
     chars_per_token: float = Field(default=4.0, gt=0.0)
+    #: The same ratio for the tool schemas, which are JSON.
+    #:
+    #: JSON tokenises far worse than prose — lots of punctuation, short repeated keys.
+    #: Measured at **2.0 characters per token** against OpenRouter: 1220 characters of
+    #: schema cost roughly 610 prompt tokens. Using the prose ratio here under-counted
+    #: the fixed per-request overhead by half, on top of the larger defect that the
+    #: schemas were not counted at all.
+    schema_chars_per_token: float = Field(default=2.0, gt=0.0)
     summarise_above_tokens: int = Field(default=600, ge=0)
     summary_chars: int = Field(default=200, gt=0)
 

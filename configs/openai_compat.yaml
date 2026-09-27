@@ -16,8 +16,8 @@ tools:
 
 provider:
   kind: openai_compat
-  model: mid-tier-model-name
-  base_url: https://api.example.com/v1
+  model: stealth/space-bunny-alpha
+  base_url: https://openrouter.ai/api/v1
   api_key_env: AGENT_API_KEY
   price_input_per_mtok: 0.5
   price_output_per_mtok: 1.5

@@ -169,6 +169,32 @@ def test_a_secret_is_named_not_stored() -> None:
     assert "api_key" not in dumped["provider"]
 
 
+def test_an_empty_api_key_env_explains_itself() -> None:
+    """The field names an environment variable; it does not hold the key.
+
+    Someone setting up a real endpoint emptied it, and the schema error they got was
+    `Input should be a valid string`, which does not say what the field is for. A loud
+    failure that does not explain itself costs a debugging session.
+    """
+    with pytest.raises(ConfigError) as caught:
+        validate_config({**MINIMAL, "provider": {"kind": "openai_compat", "api_key_env": ""}})
+    message = str(caught.value)
+    assert "names the environment variable" in message
+    assert ".env" in message
+
+
+def test_a_whitespace_api_key_env_is_also_refused() -> None:
+    with pytest.raises(ConfigError, match="names the environment variable"):
+        validate_config({**MINIMAL, "provider": {"kind": "openai_compat", "api_key_env": "   "}})
+
+
+def test_an_api_key_env_is_trimmed() -> None:
+    config = validate_config(
+        {**MINIMAL, "provider": {"kind": "openai_compat", "api_key_env": " AGENT_API_KEY "}}
+    )
+    assert config.provider.api_key_env == "AGENT_API_KEY"
+
+
 def test_the_key_is_read_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     config = load_config_by_name("openai_compat", root=CONFIGS)
     monkeypatch.setenv("AGENT_API_KEY", "from-env")

@@ -179,8 +179,14 @@ def test_model_refusal_is_verbatim_and_not_retried(tracer) -> None:
 
 
 def test_context_overflow_summarises_oldest_first(tracer) -> None:
+    """The ceiling must clear the fixed tool-schema overhead, or the run is `ContextUnfit`.
+
+    The schemas for two tools cost about 620 tokens, and they are sent on every request.
+    A 400-token ceiling asks for a prompt smaller than its own schemas, which the assembler
+    correctly refuses rather than silently sending something else.
+    """
     config = make_config(
-        context={"max_prompt_tokens": 400, "summarise_above_tokens": 120, "summary_chars": 40},
+        context={"max_prompt_tokens": 1200, "summarise_above_tokens": 120, "summary_chars": 40},
         guardrails={"untrusted_max_chars": 2000},
     )
     output = execute(
