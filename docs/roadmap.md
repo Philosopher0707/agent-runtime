@@ -202,10 +202,40 @@ Not "later" — **not**, unless something changes:
 - Fine-tuning. Not a substitute for a smaller configuration.
 - A second provider adapter before the first one has run against a live endpoint.
 
-## The risk worth naming
+## The risk worth naming — and how it came out
 
-Every step in Phase 1 can come back negative, and that is the point of doing them first.
-If a real model does not respect the envelope, or returns three tool calls when the budget
-allows two, or wraps JSON in prose the parser cannot unwrap, then work built on top of the
-current assumptions is work that has to be redone. Phase 2 is where the interesting product
-questions live, and it is deliberately second.
+Every step in Phase 1 could have come back negative, and that was the point of doing them first:
+if a real model did not respect the envelope, or returned three tool calls when the budget allowed
+two, or wrapped JSON in prose the parser could not unwrap, then work built on top would have had
+to be redone.
+
+**It came back positive — and the failures were somewhere else.** The envelope held, the budget
+held, the parser held. What broke were four branches that **no test had ever executed**, each
+found only when real content reached it: the structured-output repair pass was unreplayable,
+summarisation was truncation whose marker turned out to be load-bearing, dropping took requests
+away from their own results, and a step could dispatch an unbounded number of tool calls. None of
+those is the risk this section named. **The named risk was the plausible one.**
+
+## What is left, and the fork
+
+**No engineering item is outstanding.** Everything above is done or deliberately deferred, and
+what remains is not a task:
+
+| what | why it is not a task |
+|---|---|
+| Concurrency | Needed the moment there is a UI. There is no UI. |
+| Streaming | Same. |
+| The semantic-injection judged property | A named gap inside a done item — real work, and small |
+| A second provider adapter | The trigger fired: the first has run against a live endpoint |
+| A second domain | The one untested claim — **"any capability is a configuration" has been tested exactly once** |
+
+So the next step is a product decision rather than an engineering one:
+
+- **Stay a reference implementation.** The runtime is complete, honest about its limits, and
+  teaches what it knows. Nothing further is required, and that is a legitimate place to stop.
+- **Become something for one real domain.** Then the second domain is not optional: it is the test
+  of the claim every other decision rests on, and the only way to learn whether the findings so
+  far are about *the runtime* or about *one prompt*.
+
+Named here because a roadmap that has run out of items should say so, rather than leaving the next
+person to discover the list is empty.
