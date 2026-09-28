@@ -1272,3 +1272,57 @@ in five runs.** Nothing in the runtime can see it — the output says `needs_hum
 reports `ok`, because the runtime does not know a judgement implies an action. Closing that would
 mean the runtime reasoning about domain semantics, which the one rule forbids. Recorded, not
 fixed.
+
+### 2026-09-28 — The hard ceiling fired, and what it did was wrong
+
+**L84. The other half of the context path, driven for the first time.**
+
+`dropped_messages` was zero in every trace ever produced, and `ContextUnfit` had never been
+raised. Driven with a configuration whose every step is full of maximum-size results, both fire —
+and the drop was **dropping single turns, oldest first**, which produced this prompt:
+
+```
+[0] system    'You are a test assistant...'
+[1] user      'go'
+[2..17] user  '[summarised] <<<UNTRUSTED_TOOL_OUTPUT tool=echo ...'  × 16
+```
+
+**Every assistant turn was gone.** Sixteen answers to questions the model could not see it had
+asked, and a transcript beginning with a result. **The run reported `ok`.**
+
+*Lesson: the same question as last time — has this fired? — and the same shape of answer. A branch
+that has never run has never been seen to be wrong, and this one was wrong in a way that produced
+a confident, successful-looking run.*
+
+**L85. The cause is that the request is the large thing, and nothing bounds it.**
+
+`untrusted_max_chars` bounds what a tool *returns*. **Nothing bounds what the model asks for.**
+The assistant turn carries the tool-call arguments in full, so sixteen calls with 8,000-character
+arguments is ~65,000 tokens — which the soft threshold cannot touch (summarisation only rewrites
+tool results) and the hard ceiling can only drop.
+
+That is the real fix and it is *not* what I shipped: the transcript's rendering of a call should be
+bounded the way its result is, without changing what the tool receives. Recorded, because the
+symptom (an incoherent transcript) and the cause (an unbounded request) are different things.
+
+**L86. And the obvious fix was worse, which I only know because I measured it.**
+
+Pairing the drop — a request and its results leaving together — is structurally right. Applied to a
+single 65,000-token group it **emptied the transcript entirely**: system prompt, task, nothing else.
+
+A transcript the model cannot parse is bad. An empty one is not better. So the rule became *drop
+the oldest group, never the last*, and if what must be kept does not fit, **raise** — the refusal
+now covers both ends rather than only the protected pair.
+
+*Lesson: I shipped the pairing, ran the probe, and watched it delete everything. The fix took one
+more iteration and would not have been found by reasoning about it — the numbers were 65,703
+tokens against a 16,000 ceiling, and no amount of care with the loop's shape makes that visible.*
+
+**L87. And the first test that failed was asserting the old behaviour.**
+
+`test_dropping_only_happens_under_the_hard_ceiling_and_is_counted` built three tool results **with
+no request turns at all** — the exact incoherence being fixed — and asserted all three were
+dropped. The fixture had encoded the bug.
+
+*Lesson: a test fixture is a claim about what the system's inputs look like. This one claimed a
+transcript can be all answers and no questions, which is precisely what made the bug invisible.*

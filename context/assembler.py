@@ -37,11 +37,16 @@ def _schema_tokens(schemas: Sequence[ToolDescriptor], config: ContextConfig) -> 
 
 
 class ContextUnfit(Exception):
-    """The protected pair does not fit the hard ceiling. Not recoverable here."""
+    """What must be kept does not fit the hard ceiling. Not recoverable here.
+
+    Two things are kept regardless of the ceiling: the protected pair (the system prompt and
+    the task), and the most recent request with the results it produced. If either cannot fit,
+    the assembler refuses rather than sending a transcript that cannot be made sense of.
+    """
 
     def __init__(self, *, estimated_tokens: int, max_prompt_tokens: int) -> None:
         super().__init__(
-            f"system prompt + task need ~{estimated_tokens} tokens, ceiling is {max_prompt_tokens}"
+            f"what must be kept needs ~{estimated_tokens} tokens, ceiling is {max_prompt_tokens}"
         )
         self.estimated_tokens = estimated_tokens
         self.max_prompt_tokens = max_prompt_tokens
@@ -171,15 +176,34 @@ class ContextAssembler:
             )
             summarised += 1
 
-        # 2. Hard ceiling: drop the oldest turns. Never the protected pair.
+        # 2. Hard ceiling: drop the oldest *group* — a request and the results it produced —
+        # but never the last one.
+        #
+        # Two things were wrong with dropping single turns. It left the transcript incoherent:
+        # the model received sixteen tool results and none of its own requests, so the prompt
+        # began with an answer to a question that was no longer there. And the turns it was
+        # willing to drop included the *current* request, which is the one thing the model is
+        # mid-conversation with.
+        #
+        # Pairing alone was worse: with one 65,000-token group, dropping it emptied the
+        # transcript entirely — measured, not guessed. So the last group is kept, and if even
+        # that cannot fit, the assembler refuses rather than sending something misleading.
+        # That is the same principle as the protected pair, applied to the other end.
         dropped = 0
-        while total() > hard and turns:
+        while total() > hard and _request_count(turns) > 1:
             turns.pop(0)
             dropped += 1
+            while turns and turns[0].tool_name is not None:
+                turns.pop(0)
+                dropped += 1
 
-        # 3. If the protected pair alone does not fit, refuse to pretend.
-        if protected > hard:
-            raise ContextUnfit(estimated_tokens=protected, max_prompt_tokens=hard)
+        # 3. If what must be kept does not fit, refuse to pretend.
+        #
+        # Covers both ends: the protected pair alone (the system prompt and the task), and the
+        # most recent request with its results. Sending a transcript that cannot be made sense
+        # of is worse than reporting that it did not fit.
+        if total() > hard:
+            raise ContextUnfit(estimated_tokens=total(), max_prompt_tokens=hard)
 
         messages: list[dict[str, Any]] = [
             {"role": str(MessageRole.SYSTEM), "content": self._system_prompt},
@@ -203,6 +227,15 @@ class ContextAssembler:
                 task_present=True,
             ),
         )
+
+
+def _request_count(turns: list[Turn]) -> int:
+    """How many turns could be a request — anything that is not a tool result.
+
+    Used to keep the most recent one when the hard ceiling forces drops. A tool result on its
+    own is half a conversation: it is an answer, and the question it answers has to stay.
+    """
+    return sum(1 for turn in turns if turn.tool_name is None)
 
 
 def _first_unsummarised_tool(turns: list[Turn]) -> int | None:

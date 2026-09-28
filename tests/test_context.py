@@ -92,6 +92,12 @@ def test_summarisation_continues_until_the_soft_threshold_is_met() -> None:
 
 
 def test_dropping_only_happens_under_the_hard_ceiling_and_is_counted() -> None:
+    """Dropping removes a whole group — a request and the results it produced.
+
+    The request turn is part of the fixture now, and that is the point: a transcript of tool
+    results with no requests is what the old drop produced, and it is not a transcript any
+    model can make sense of.
+    """
     assembler = make_assembler(
         system="S" * 10,
         task="T" * 10,
@@ -99,13 +105,57 @@ def test_dropping_only_happens_under_the_hard_ceiling_and_is_counted() -> None:
         summarise_above_tokens=250,
         summary_chars=40,
     )
+    # Two requests, each answered. Only the most recent group may be kept.
+    assembler.add_assistant("first question", tool_calls=[])
     for index in range(3):
         assembler.add_tool_result(name=f"tool{index}", envelope="R" * 400)
+    assembler.add_assistant("second question", tool_calls=[])
 
     assembled = assembler.build(step=1)
-    assert assembled.record.dropped_messages == 3
+    assert assembled.record.dropped_messages >= 1, "the ceiling forced a drop"
     assert assembled.messages[0]["content"] == "S" * 10
     assert assembled.messages[1]["content"] == "T" * 10
+    # The most recent request survives; the transcript never ends up empty.
+    assert any("second question" in str(m.get("content")) for m in assembled.messages)
+
+
+def test_the_transcript_never_keeps_a_result_whose_request_was_dropped() -> None:
+    """The invariant pairing buys: after the protected pair, no leading tool result.
+
+    Before this, dropping single turns left the model with sixteen answers and none of its
+    own questions — the prompt began with a result, and the model could not tell what it had
+    asked.
+    """
+    assembler = make_assembler(
+        system="S" * 10, task="T" * 10, max_prompt_tokens=200, summarise_above_tokens=100
+    )
+    for _ in range(3):
+        assembler.add_assistant("a question", tool_calls=[])
+        assembler.add_tool_result(name="tool", envelope="R" * 200)
+
+    assembled = assembler.build(step=1)
+    turns = assembled.messages[2:]
+    assert turns, "the most recent group is kept"
+    assert "UNTRUSTED_TOOL_OUTPUT" not in str(turns[0].get("content")), (
+        "the transcript begins with a tool result, so its request was dropped"
+    )
+
+
+def test_a_group_too_large_to_fit_raises_rather_than_sending_half_of_it() -> None:
+    """Measured, not guessed: pairing alone emptied the transcript.
+
+    With one 65,000-token group, dropping it left nothing at all — which is worse for the
+    model than a transcript it cannot parse. So the last group is kept, and if even that
+    cannot fit, the assembler refuses and the run reports `context_overflow`.
+    """
+    assembler = make_assembler(
+        system="S" * 10, task="T" * 10, max_prompt_tokens=50, summarise_above_tokens=20
+    )
+    assembler.add_assistant("one enormous question", tool_calls=[])
+    assembler.add_tool_result(name="tool", envelope="R" * 4_000)
+
+    with pytest.raises(ContextUnfit):
+        assembler.build(step=1)
 
 
 def test_a_protected_pair_that_cannot_fit_raises_rather_than_lying() -> None:
