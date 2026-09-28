@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from tools.registry import Tool, ToolError
 from tools.triage import TRIAGE_TOOLS
+from tools.verify import VERIFY_TOOLS
 
 # ------------------------------------------------------------------------------- echo
 
@@ -245,6 +246,8 @@ BUILTIN_TOOLS: dict[str, Callable[..., Tool]] = {
     # named — see `tools/catalogue.py`. They live in their own module because a domain's tools
     # are a domain's, not the runtime's.
     **TRIAGE_TOOLS,
+    # The second domain's. Same rule: named at the seam, implemented in their own module.
+    **VERIFY_TOOLS,
 }
 
 

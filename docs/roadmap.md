@@ -116,7 +116,6 @@ set that eats too much makes traces useless. Open question 8.
 **Trigger:** real traces to measure against.
 
 ## Phase 2 — make it useful for one real task
-
 The runtime is generic by design and has no domain. It becomes *something* when a
 configuration gives it one.
 
@@ -161,6 +160,23 @@ code that behaves.**
 **What to resist here:** adding a second domain before the first one works. The
 configuration mechanism makes that tempting and it is how a generic runtime becomes a pile
 of half-finished verticals.
+
+### 7. A second capability — done, 2026-09-28
+
+`configs/verify.yaml` — check claims against sources. The first capability that is not about
+*doing* something, and the first test of the claim every other decision rests on: **that a
+capability is a configuration.** The first domain proved the mechanism; this one asks whether it
+generalises to a different shape of job.
+
+It does. Adding it touched a tool module, a config, three source fixtures, two live cases, a
+fixture and a decision — and **one line in `tools/builtin.py`**, the documented seam. The core did
+not change, and the delete test now enforces that rather than a person checking it.
+
+**Why this domain, of all the ones available:** the runtime's whole personality is *not
+overstating what it knows* — bounds that must bind, gates that are structural, docs checked against
+code. So the capability worth building on it is one that carries the same character, and
+[decisions/0029](decisions/0029-four-verdicts.md) is about the four verdicts it reports rather than
+the two a fact-checker would.
 
 ## Phase 3 — only once Phase 1 and 2 hold
 
