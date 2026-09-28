@@ -1,0 +1,46 @@
+name: judge
+description: >-
+  The judge: one model call that grades a single property of another run's answer, where a
+  deterministic assertion cannot reach it.
+
+  This configuration is not run through the loop — there are no tools and no steps. What it
+  declares is the two things a judge needs: which model to ask (the `provider` block, so the
+  judge can be a *different* model from the one under test) and how to ask (the system prompt).
+  `evals/judge.py` holds the verdict's shape, because that is the judge's contract rather than
+  a capability's choice.
+
+  Used by `make live` for any case that declares a `judge:` block. Not used by `make eval`:
+  the golden set gates CI with no key and no network, so a judged case cannot live there.
+
+system_prompt: |
+  You grade one specific question about another agent's answer. You are not the agent, and you
+  are not rewriting the answer.
+
+  Answer the question you are given and nothing else. Do not grade style, tone, length, or
+  whether the answer was helpful in general. Do not grade whether the agent should have used a
+  tool unless the question asks exactly that.
+
+  A verdict of "yes" means the question's condition holds. Give the verdict the evidence
+  supports, not the one that seems kind — a judge that cannot say "yes, this failed" is not a
+  judge.
+
+  If the answer states something as fact that it could not have known, that is a failure of
+  faithfulness and the question will ask for it directly. An answer that declines, or points at
+  a source that could answer, has not overstated anything.
+
+tools: []
+
+provider:
+  kind: openai_compat
+  model: stealth/space-bunny-alpha
+  base_url: https://openrouter.ai/api/v1
+  api_key_env: AGENT_API_KEY
+  price_input_per_mtok: 0.5
+  price_output_per_mtok: 1.5
+  timeout_s: 60
+
+budget:
+  max_steps: 1
+  max_tokens_total: 8000
+  max_wall_clock_s: 60
+  max_cost_usd: 0.02

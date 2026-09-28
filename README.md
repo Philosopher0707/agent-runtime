@@ -166,7 +166,7 @@ runtime/      the loop, budget, trace, replay, redaction, schemas, status vocabu
 providers/    the Provider protocol, a stub, an OpenAI-compatible adapter, a replayer
 tools/        the tool contract and dispatch policy, the built-ins, a scripted double
 context/      context assembly, truncation, and untrusted-content handling
-evals/        the golden-set runner, the marker corpus, and the judge seam (a placeholder)
+evals/        the golden-set runner, the live property suite, the marker corpus, the judge
 configs/      worked examples — the fastest way to understand the design
 tests/        one test per failure class, plus the invariants
 docs/         architecture, the roadmap, and the decision record

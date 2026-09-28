@@ -34,6 +34,13 @@ from typing import Any
 
 import yaml
 
+from evals.judge import (
+    DETERMINISTIC_SCORER,
+    JUDGE_SCORER,
+    JudgeUnavailable,
+    grade,
+    judge_question,
+)
 from runtime.config import (
     ConfigError,
     apply_overrides,
@@ -52,6 +59,11 @@ LIVE_TRACE_DIR = REPO_ROOT / ".traces" / "live"
 CONFIG_ROOT = REPO_ROOT / "configs"
 NOTES_ROOT = REPO_ROOT / ".notes" / "live"
 
+#: The configuration the judge's model and instruction come from. A separate configuration on
+#: purpose: the judge should be able to be a *different* model from the one under test, and a
+#: self-graded case is a weaker thing that ought to be visible rather than accidental.
+JUDGE_CONFIG = "judge"
+
 
 @dataclass
 class LiveResult:
@@ -60,6 +72,9 @@ class LiveResult:
     problems: list[str] = field(default_factory=list)
     status: str = ""
     trace_path: Path | None = None
+    #: Which scorer graded this case. "Which scorer graded it" should always have an answer —
+    #: a judged property and an asserted one are different kinds of claim.
+    scorer: str = DETERMINISTIC_SCORER
 
 
 def load_cases(directory: Path = LIVE_CASES_DIR) -> list[tuple[Path, dict[str, Any]]]:
@@ -184,6 +199,32 @@ def _scripted_tools(spec: dict[str, Any]) -> list[Any]:
     ]
 
 
+def _judge_problems(case: dict[str, Any], output: RunOutput) -> list[str]:
+    """Grade the case with a judge model, or say plainly why it could not be graded.
+
+    A judged case that passes when the judge is missing has stopped testing anything, so every
+    failure to judge is a *problem* rather than a skip. That is the placeholder's own stance
+    and it is the right one: a silent pass is the failure this project keeps finding.
+    """
+    try:
+        config = load_config_by_name(JUDGE_CONFIG, root=CONFIG_ROOT)
+    except ConfigError as exc:
+        return [f"judge: no judge configuration ({exc})"]
+    if not read_api_key(config.provider):
+        return [f"judge: {config.provider.api_key_env} is not set, so the judge cannot run"]
+
+    provider = build_provider(config.provider)
+    try:
+        verdict = grade(case, output, provider=provider, system_prompt=config.system_prompt)
+    except JudgeUnavailable as exc:
+        return [f"judge: {exc}"]
+
+    print(f"    judge: {verdict.verdict} — {verdict.reason}")
+    if verdict.passed:
+        return []
+    return [f"judge: the answer failed the judged property — {verdict.reason}"]
+
+
 def run_case(case: dict[str, Any]) -> LiveResult:
     case_id = str(case["id"])
     notes_root = NOTES_ROOT / case_id
@@ -225,11 +266,17 @@ def run_case(case: dict[str, Any]) -> LiveResult:
         registry.close()
 
     problems = check_properties(case.get("expect") or {}, output, notes_root=notes_root)
+    scorer = DETERMINISTIC_SCORER
+    if judge_question(case):
+        scorer = JUDGE_SCORER
+        problems.extend(_judge_problems(case, output))
+
     return LiveResult(
         case_id=case_id,
         passed=not problems,
         problems=problems,
         status=str(output.status),
+        scorer=scorer,
         trace_path=LIVE_TRACE_DIR / f"{trace_id}.jsonl",
     )
 
