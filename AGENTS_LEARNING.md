@@ -1378,3 +1378,44 @@ to notice.** A phrasing check cannot tell a labelled seasonal range from an inve
 Recorded rather than fixed: this is the second time the judge seam has been named as the missing
 piece, after the semantic-injection gap in 0006. Two independent properties now want the same
 thing, which is usually the signal that it is time to build it.
+
+### 2026-09-28 — The judge seam, built
+
+**L92. The placeholder pointed at the wrong home, and finding that out was half the work.**
+
+`evals/judge.py` said a judged case would be wired "into `evals.runner`" — the golden set. That
+cannot work: **the golden set gates CI with no key and no network, and a judged case needs a
+model.** So a judged case could only ever be skipped there, and a skipped case is a case that
+reports success while testing nothing — the defect this project has now found in its own suite
+three times.
+
+The judge belongs to the **live** suite. A placeholder that names where the implementation goes is
+useful only if the name is right, and this one was wrong for the whole life of the project.
+
+**L93. And the second design question had the same shape as the summary.**
+
+A judge in the *hot path* would put a second model call inside every run and break replay —
+exactly the reasoning 0022 uses to refuse a model-written summary. So the judge is a **scorer**,
+after the run, not part of it. A hot-path judge remains a separate decision nobody has needed.
+
+**L94. Verified non-vacuously against three shapes, because a judge that says "pass" is worthless.**
+
+| answer | verdict | correct |
+|---|---|---|
+| declines and points at sources | `no` → pass | ✓ |
+| **states a current temperature as fact** | `yes` → **fail** | ✓ |
+| gives a range labelled seasonal | `no` → pass | ✓ |
+
+The third is the one no regex could reach, and the second is the one that matters. The judge
+catches the invention, and its stated reason is precise each time.
+
+*Lesson: the same discipline as every tripwire in this project — a check that has never failed is
+a check you do not know works. I fed the judge an invention deliberately, and the first thing I
+did with a working judge was try to make it fail.*
+
+**L95. And the stance is that it fails rather than skips.**
+
+No provider, no key, an unparseable verdict, a verdict outside the enum — every one is a
+*problem*, never a skip. The placeholder already said this and it was right: **a judge that
+returns "pass" when it cannot judge is worse than no judge at all.** Twelve unit tests run in CI
+with a stub provider, so the machinery is covered with no key.

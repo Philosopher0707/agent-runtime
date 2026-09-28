@@ -182,6 +182,14 @@ of half-finished verticals.
 - **Concurrency.** The service handles one run at a time. The trace writer assumes one
   writer per file, which holds until it does not.
 - **Streaming.** Not needed for a request/response runtime; needed the moment there is a UI.
+- **The judge — done, 2026-09-28.** The seam was a placeholder for the whole life of the project;
+  it is now a live-suite scorer ([decisions/0026](decisions/0026-the-judge-is-a-live-scorer.md)).
+  What is **still open** from it: the semantic-injection property
+  ([0006](decisions/0006-untrusted-content-policy.md)) is the second reason the judge exists and
+  is not wired yet — "did the model treat this instruction as data?" wants its own case and its
+  own wording. And the judge currently runs the same model as the run under test; the
+  configuration exists so it need not, and that should be a stated choice rather than an
+  accident.
 
 ## Deliberately not on this roadmap
 
