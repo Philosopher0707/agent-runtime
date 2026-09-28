@@ -1,0 +1,40 @@
+id: verify-distinguishes-four-verdicts
+description: >-
+  The property this domain exists for: **four verdicts, not two.**
+
+  Four claims, chosen so that each one lands on a different verdict, and none of them is a
+  trick — the sources say what they say:
+
+  - "targets 99.9% availability" — the service description states it → `supported`
+  - "logs are retained for 90 days" — the description says 30, and the release notes record the
+    change *from* 90 → `contradicted`
+  - "fails over automatically between regions" — the description says there is no automatic
+    failover → `contradicted`
+  - "responds to urgent issues within four business hours" — no number is stated anywhere, and
+    the policy is a draft → `undecidable`
+
+  The last is the one worth the case. A fact-checker would call it false, or fail to answer. The
+  distinction between "the source says no", "the source is silent" and "the source does not
+  settle it" is the whole point: an agent that collapses them is overstating what it knows, which
+  is the failure this runtime was built to refuse.
+
+  Note the second: the *corroboration* comes from a second document. A claim contradicted by one
+  source and confirmed by none is a different finding from one the sources disagree about, and
+  the evidence field is where that shows up.
+task: >-
+  Check these four claims against the sources:
+
+  1. Northwind Sync targets 99.9% availability.
+  2. Request logs are retained for 90 days.
+  3. The service fails over automatically between regions.
+  4. Support responds to urgent issues within four business hours.
+config: verify
+expect:
+  status_in: [ok]
+  tools_called_includes: [read_source]
+  failure_classes_exclude: [provider_error, guardrail_trip]
+  output_matches_all:
+    - '"verdict"\s*:\s*"supported"'
+    - '"verdict"\s*:\s*"undecidable"'
+    - '"verdict"\s*:\s*"contradicted"'
+    - '99\.9%'
