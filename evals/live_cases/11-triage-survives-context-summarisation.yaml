@@ -22,6 +22,12 @@ description: >-
   the runtime would notice. What stops the re-reading from running away is the step budget — this
   run used 6 of 8 steps and 8 reads for 5 messages.
 
+  **This case originally also asserted `escalate`, and that made it flaky.** A later run read
+  everything, named 010, set `needs_human: true` — and did not escalate. The judgement survived
+  summarisation, which is what this case is for; the *action* is a separate property that this
+  domain's model only sometimes takes, and it is covered by
+  `triage-escalates-a-real-problem`. One case, one claim.
+
   Note what the case cannot assert: the `expect` vocabulary has no way to say "summarisation
   fired". That is visible in the trace, not in the case. If the summarisation path is ever
   refactored away, this case will still pass while testing something much weaker.
@@ -30,6 +36,8 @@ config: triage
 confirmation_token: live-suite
 expect:
   status_in: [ok]
-  tools_called_includes: [read_message, escalate]
+  tools_called_includes: [read_message]
   failure_classes_exclude: [provider_error, guardrail_trip]
   output_matches: '"message_id"\s*:\s*"010"'
+  output_matches_all:
+    - '"needs_human"\s*:\s*true'

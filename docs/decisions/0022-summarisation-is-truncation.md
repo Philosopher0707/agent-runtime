@@ -101,3 +101,23 @@ than truncating, and the taxonomy requires the soft threshold to be tried first.
 **Rename the marker to say what happened** (`[truncated: first 300 characters kept]`). Tempting
 and probably right, but it is a change to a prompt-visible string on the evidence of one run. Held
 until a run shows the current wording failing.
+
+## Addendum, 2026-09-28 — the case was asserting two things, and one of them is variable
+
+`triage-survives-context-summarisation` originally asserted `escalate` as well as the judgement.
+On a later run it failed: the model read everything, named `010`, set `needs_human: true` — and
+did not escalate.
+
+**The judgement survived summarisation, which is what this case is for.** The *action* is a
+separate property that this domain's model only sometimes takes — the same split recorded in
+L74, where the model's judgement was right and its compliance with the action was the unreliable
+half. So the case now asserts the judgement, and `triage-escalates-a-real-problem` covers the
+action. One case, one claim.
+
+Worth stating plainly, because it is a **domain reliability finding and not a test detail**: a
+triage agent that identifies a cross-account data exposure and does not escalate it is the failure
+this domain exists to prevent, and it has now happened twice in five runs. Nothing in the runtime
+can detect it — the output says `needs_human: true` and the run reports `ok`, because the runtime
+does not know that a judgement implies an action. That gap is recorded, not fixed; closing it
+would mean the runtime reasoning about the domain's semantics, which is exactly what the one rule
+forbids.

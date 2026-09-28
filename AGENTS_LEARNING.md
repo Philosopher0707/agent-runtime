@@ -1224,3 +1224,51 @@ and the model is told in-band.
 configuration ones — and when the fix has a choice of *what to measure*, prefer the one that
 cannot vary between a run and its replay. Correctness of the record outranks tightness of the
 bound.*
+
+### 2026-09-28 — The assertion vocabulary was never checked against the code
+
+**L82. A case asserted with a kind that did not exist, and it ran green.**
+
+Writing the summarisation case, I needed two independent facts about the output and reached for
+`output_matches_all`. It does not exist. `check_properties` reads `output_matches` — one regex —
+and **ignores every key it does not recognise**. So the case would have passed while asserting
+less than it said.
+
+That is the defect this project keeps finding, this time in the suite itself: *a test that has
+quietly stopped testing its subject.* The live cases are the only place a real model's behaviour
+is asserted, and their vocabulary had never been checked against the code that enforces it.
+
+Two fixes, and the second was the one that paid:
+
+1. **`output_matches_all`** — a list, all of which must match. A case needing two facts should not
+   have to fuse them into one regex.
+2. **An unknown kind is refused, not skipped.** Closing the vocabulary turned it into a check.
+
+**And the refusal immediately found more.** Three existing cases use `steps_at_most` and
+`model_calls_at_most` — real kinds, enforced further down the function, which **my hand-written set
+had missed** because I built it from a partial read. The set would have failed three valid cases.
+
+So the set is now **derived from the checker** by parsing every `expect[...]` it touches, and
+`tests/test_live_cases.py` asserts the two agree in both directions: nothing enforced is missing
+from the set, and nothing in the set is unenforced.
+
+*Lesson: a vocabulary that is only ever read is not a contract. Writing the set down turned a
+silent skip into a loud refusal, and the loud refusal found two things a careful reading had
+missed. Enumerate from the artefact — the third time this session that has paid.*
+
+**L83. And the summarisation case was asserting two things, one of which is genuinely variable.**
+
+It failed on a later run — and not for the reason I expected. The model read everything, named
+`010`, set `needs_human: true`, and **did not escalate**. The judgement survived summarisation,
+which is what the case is for; the action is the half that is unreliable, exactly as L74 recorded.
+
+So the case now asserts the judgement and `triage-escalates-a-real-problem` covers the action.
+**One case, one claim** — and a flaky case is worse than no case, because it teaches people to
+ignore the suite.
+
+The finding underneath it is not a test detail: **a triage agent that identifies a data exposure
+and does not escalate it is the failure this domain exists to prevent, and it has happened twice
+in five runs.** Nothing in the runtime can see it — the output says `needs_human: true` and the run
+reports `ok`, because the runtime does not know a judgement implies an action. Closing that would
+mean the runtime reasoning about domain semantics, which the one rule forbids. Recorded, not
+fixed.

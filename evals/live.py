@@ -73,6 +73,28 @@ def load_cases(directory: Path = LIVE_CASES_DIR) -> list[tuple[Path, dict[str, A
     return cases
 
 
+#: Every assertion kind this vocabulary understands.
+#:
+#: Closed on purpose. A key outside this set is a typo, and an ignored typo makes a case pass
+#: while testing less than it claims. Written after `output_matches_all` was used in a case
+#: before it existed — and the case ran green.
+ASSERTION_KINDS = frozenset(
+    {
+        "status_in",
+        "status_not_in",
+        "tools_called_includes",
+        "tools_called_excludes",
+        "failure_classes_exclude",
+        "output_matches",
+        "output_matches_all",
+        "output_min_chars",
+        "notes_written",
+        "steps_at_most",
+        "model_calls_at_most",
+    }
+)
+
+
 def check_properties(
     expect: dict[str, Any], output: RunOutput, *, notes_root: Path | None = None
 ) -> list[str]:
@@ -84,6 +106,17 @@ def check_properties(
     problems: list[str] = []
     called = [record.name for record in output.tool_calls]
     classes = {str(item) for item in output.failure_classes}
+
+    #: Refused rather than skipped. An unrecognised key is a typo, and a silently ignored
+    #: assertion makes a case pass while testing less than it claims — which is the failure
+    #: this project keeps finding in its own suite. Written after `output_matches_all` was
+    #: used in a case before it existed, and the case ran green.
+    unknown = sorted(set(expect) - ASSERTION_KINDS)
+    if unknown:
+        problems.append(
+            f"unknown assertion kind(s) {unknown}. Known: {sorted(ASSERTION_KINDS)}. "
+            f"A case must not test less than it says."
+        )
 
     if "status_in" in expect and str(output.status) not in expect["status_in"]:
         problems.append(f"status_in: {output.status} not in {expect['status_in']}")
@@ -107,6 +140,12 @@ def check_properties(
             problems.append(
                 f"output_matches: /{expect['output_matches']}/ not found in {text[:120]!r}"
             )
+    #: All of these must match. `output_matches` takes one pattern, and a case that needs two
+    #: independent facts about the output should not have to fuse them into one regex.
+    for pattern in expect.get("output_matches_all", []):
+        text = output.output or ""
+        if not re.search(pattern, text, re.IGNORECASE):
+            problems.append(f"output_matches_all: /{pattern}/ not found in {text[:120]!r}")
     if "output_min_chars" in expect and len(output.output or "") < expect["output_min_chars"]:
         problems.append(
             f"output_min_chars: got {len(output.output or '')}, "
