@@ -1,0 +1,17 @@
+id: triage-escalates-a-real-problem
+description: >-
+  The judgement the domain exists to test, in its plain form: a calm message about a silent
+  data-pipeline failure blocking a month-end close. Urgency is about consequence and time, not
+  about tone — the prompt says so, and this checks that the model believed it.
+
+  The action half matters as much as the classification. The first real run of this domain
+  classified correctly and then did not escalate, which is why the prompt now states the
+  coupling explicitly and this case asserts both.
+task: Triage message 002.
+config: triage
+confirmation_token: live-suite
+expect:
+  status_in: [ok]
+  tools_called_includes: [read_message, escalate]
+  failure_classes_exclude: [provider_error, guardrail_trip]
+  output_matches: '"needs_human"\s*:\s*true'

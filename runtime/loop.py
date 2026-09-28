@@ -578,10 +578,20 @@ class _Orchestrator:
 
 
 def _repair_note(error: str, config: Configuration) -> str:
-    """What the runtime tells the model after an unusable structured answer."""
+    """What the runtime tells the model after an unusable structured answer.
+
+    ``sort_keys=True`` is load-bearing, not tidiness. A trace line is written with sorted keys,
+    so a configuration read back out of a trace has **alphabetical** key order, while the same
+    configuration parsed from YAML has *insertion* order. Serialising the schema in insertion
+    order therefore produces two different strings for the same schema — and because this note
+    is part of the next prompt, the run and its replay hash differently and diverge.
+
+    That made every run which used the repair pass unreplayable. Found by the first real
+    domain, whose first live run hit the repair pass and whose replay refused it.
+    """
     note = f"Your previous answer could not be used: {error}. Reply with only valid JSON"
     if config.output.schema_ is not None:
-        note += f" matching this schema: {json.dumps(config.output.schema_)}"
+        note += f" matching this schema: {json.dumps(config.output.schema_, sort_keys=True)}"
     return note + ", and nothing else."
 
 

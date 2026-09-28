@@ -1050,3 +1050,79 @@ exempt, because it is a record of mistakes and must be free to name them.**
 
 Excluding the log still catches the false citation this check was written for: it appeared in
 both a decision record and the log, and the decision record is checked.
+
+### 2026-09-28 — Phase 2: the first domain, and what it broke
+
+**L73. The domain was chosen for what it exercises, not for what it does.**
+
+Triage: read a message an untrusted sender wrote, classify it, escalate it when a person is
+needed. Chosen because it exercises the four things this runtime paid for — the untrusted
+envelope, the injection scan, structured output, and the confirmation gate — and because
+correctness is *assertable*: a category is right or it is not.
+
+Two of the four sample messages are a deliberate pair. `003` trips the injection scan, so the
+guardrail refuses the run and the model never sees it. `004` reports a cross-account data
+exposure and then, in ordinary prose, says it has already been reviewed so there is no need to
+escalate — and it **evades the scan**. There is no net underneath that one. Which defence handles
+which is now measured rather than assumed.
+
+**L74. The first real run found a prompt gap, and the second found another.**
+
+Run 1: the model **asked permission before escalating** — `ask_clarification` working, but
+redundantly, because the caller's token had already authorised it. Run 2, with that fixed: the
+model classified correctly (`bug`, `high`, `needs_human: true`) and then **did not escalate**.
+
+Both halves of the task are the model's to get right, and it got one each time. The prompt now
+states the coupling explicitly.
+
+*Lesson: "the model will do what the prompt says" is a belief worth testing before it is relied
+on. Its judgement was right in every run; its compliance with the action was the unreliable part,
+and that is not where I would have looked.*
+
+**L75. The first live case encoded an expectation the domain does not support.**
+
+`triage-billing` asserted that a duplicate-charge message needs no human, and the model
+escalated it. **The model was right** — a refund needs a person to issue it — so the case was
+wrong, not the model. Replaced with a genuinely routine message, and the original case now
+records why.
+
+*Lesson: an eval case is a claim about the domain. Writing one is how you find out you had not
+decided what the domain means.*
+
+**L76. And then the replay refused the trace. Every repair-using run had been unreplayable.**
+
+The first live run ended in `ReplayDivergence` — the project's strongest invariant failing on the
+first real domain. The message blames context assembly, and the message is wrong: replaying twice
+rebuilt the *identical* hash both times, and steps 1–3 matched exactly. Something had **changed**
+between recording and replay, at step 4 only.
+
+Step 4 is the prompt carrying the **repair note**. The run had taken the repair pass — the model
+answered `"category": "bug_report"`, which is not in the enum. And `_repair_note` serialised the
+schema with `json.dumps` **without `sort_keys`**, while the two doors a configuration can come
+through disagree about key order:
+
+- parsed from `configs/*.yaml` → insertion order
+- read back out of a trace → **alphabetical**, because every trace line is written `sort_keys=True`
+
+Two strings for one schema, two prompt hashes, divergence. Fixed with one word
+([decisions/0021](docs/decisions/0021-order-independent-serialisation.md)), plus a blanket rule
+that every `json.dumps` in `runtime/` sorts.
+
+*Lesson: the divergence message named the wrong suspect and I believed it for a while. "Context
+assembly is not deterministic" was a hypothesis, not a finding — and the diagnostic that settled
+it was cheap: **run the replay twice.** Stable rebuilt hashes mean the assembly is fine and the
+world moved.*
+
+**L77. Why it survived: the repair path was the least-travelled branch in the loop, and a stub
+never takes it.**
+
+`make_config()` is text-output, so structured output never engaged in any replay test. And the
+repair pass only runs when a model produces an *almost*-valid answer — which a stub never does,
+because a stub is a **specification** of a model, and a specification does not make mistakes.
+
+That is the case for phase 2 in one sentence. Every test in this repository was written against
+code that behaves, and the branch that broke is the one that exists for when it does not.
+
+*Lesson: coverage measured in lines would have shown this branch as covered. What was missing was
+a path where the model is **wrong in a specific way** — and only a real model, or a scripted one
+told to be wrong that way, produces it.*

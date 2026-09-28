@@ -92,6 +92,7 @@ returns nothing, and every vendor string lives in `providers/`.
 | A trace says which build produced it | `current_revision()` recorded in `run_started` | `test_revision.py` |
 | The service is not reachable off-host by default | `AGENT_HOST` defaults to loopback | `test_service.py` |
 | The trace doc describes the actual trace | the doc's event table vs the writer's `emit` calls | `test_trace_schema_doc.py` |
+| A config-derived value in a prompt serialises order-independently | `sort_keys=True` on every `json.dumps` in `runtime/` | `test_replay.py` |
 
 The trace format itself — the envelope, every event and its payload, and the invariants that
 make replay exact — is documented in [`docs/trace-schema.md`](trace-schema.md).

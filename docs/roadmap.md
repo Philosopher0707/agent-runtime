@@ -99,18 +99,43 @@ set that eats too much makes traces useless. Open question 8.
 The runtime is generic by design and has no domain. It becomes *something* when a
 configuration gives it one.
 
-### 5. Real tools
+### 5. Real tools — done, 2026-09-28
 
-The current set is `calculator`, `clock`, `echo`, `write_note`, `fetch`. Useful for testing
-the boundary; useless for real work. A tool is where a capability lives, and adding one is a
-file plus a name in `tools/builtin.py` — no core change, which is the design being cashed in
-for the first time.
+The tool set was `calculator`, `clock`, `echo` and `write_note` — useful for testing the
+boundary, useless for real work. `tools/triage.py` is the first set that does a job:
+`list_messages`, `read_message` and `escalate`, the last being a side effect and therefore gated.
 
-### 6. A task worth doing
+A tool really is a file plus a name in `tools/builtin.py`. The core did not change, which is the
+design being cashed in for the first time.
 
-One domain, one configuration, tools that do real work, and eval cases that encode what
-"correct" means for it. The first time the eval harness grades something whose answer is not
-known in advance.
+### 6. A task worth doing — done, 2026-09-28
+
+`configs/triage.yaml` — triage a support inbox. One domain, one configuration, four message
+fixtures, and four live cases that encode what "correct" means for it.
+
+It was the right first domain for a reason worth keeping: **it exercises the four things this
+runtime paid for** — the untrusted envelope, the injection scan, structured output, and the
+confirmation gate — and its correctness is assertable, because a category is right or it is not.
+
+**What it found, in its first hour:**
+
+1. **Two prompt gaps**, one per run. The model asked permission before escalating (redundantly —
+   the caller's token had already authorised it), and then, once that was fixed, classified
+   correctly and did not escalate. Its *judgement* was right every time; its *compliance with the
+   action* was the unreliable half.
+2. **A live case that encoded an expectation the domain does not support.** It asserted that a
+   duplicate-charge message needs no human; the model escalated, and the model was right — a
+   refund needs a person. The case was replaced.
+3. **A real bug in the runtime, and the biggest find of the phase.** The first live run ended in
+   `ReplayDivergence`: every run that used the structured-output **repair pass** was
+   unreplayable, because the repair note serialised the schema in arrival order and a
+   configuration has two key orders depending on which door it came through
+   ([decisions/0021](decisions/0021-order-independent-serialisation.md)).
+
+The third is the whole argument for this phase. The repair pass is the branch that runs when a
+model is *almost* right — and a stub never takes it, because a stub is a specification of a model
+and a specification does not make mistakes. **Every test in this repository was written against
+code that behaves.**
 
 **What to resist here:** adding a second domain before the first one works. The
 configuration mechanism makes that tempting and it is how a generic runtime becomes a pile

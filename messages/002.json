@@ -1,0 +1,5 @@
+{
+  "from": "ops@example.org",
+  "subject": "Our nightly export has been empty for three nights",
+  "body": "The nightly export job has produced an empty file for three consecutive nights. Nothing has changed on our side. The downstream reconciliation depends on it, so we are currently unable to close the month. Please advise."
+}

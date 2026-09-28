@@ -15,6 +15,10 @@ build/
 # Notes written by the write_note tool in the worked examples.
 .notes/
 
+# The triage domain's escalation log. The messages beside it are fixtures and are tracked;
+# the log is what a run produced, so it is an artefact like a trace.
+messages/escalations.jsonl
+
 .env
 .env.local
 

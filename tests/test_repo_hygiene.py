@@ -257,3 +257,47 @@ def test_the_citation_checks_are_not_vacuous() -> None:
         funcs_cited += len(CITED_TEST_FUNC.findall(text))
     assert files_cited >= 10, f"only {files_cited} test-file citations found"
     assert funcs_cited >= 5, f"only {funcs_cited} test-function citations found"
+
+
+# --------------------------------------------------------- naming the tool set
+
+
+BACKTICKED_IDENT = re.compile(r"`([a-z][a-z_0-9]+)`")
+
+
+def test_no_doc_names_a_tool_that_does_not_exist() -> None:
+    """A doc listing the tool set is making a claim, and one of them was wrong.
+
+    The roadmap listed `fetch` among the tools for the whole life of the project. There has
+    never been a `fetch`. Nothing checked, because a tool name is a plain lowercase word in
+    prose — indistinguishable from any other identifier.
+
+    It becomes distinguishable in the one place it matters: a line that names **two or more
+    real tools** is a line *about* the tool set, so every backticked identifier on it must be
+    a tool. That rule flags exactly this defect and nothing else across every doc.
+    """
+    from tools.catalogue import available_tool_names
+
+    tools = set(available_tool_names())
+    offenders: list[str] = []
+    for path in citing_docs():
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            names = set(BACKTICKED_IDENT.findall(line))
+            if len(names & tools) >= 2 and (names - tools):
+                offenders.append(f"{path.name}:{number} names {sorted(names - tools)}")
+    assert not offenders, (
+        f"docs name tools that do not exist: {offenders}. Available: {sorted(tools)}"
+    )
+
+
+def test_the_tool_name_check_is_not_vacuous() -> None:
+    """It must find lines that *are* about the tool set, or it proves nothing."""
+    from tools.catalogue import available_tool_names
+
+    tools = set(available_tool_names())
+    about_tools = 0
+    for path in citing_docs():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if len(set(BACKTICKED_IDENT.findall(line)) & tools) >= 2:
+                about_tools += 1
+    assert about_tools >= 1, "no doc line names two real tools — the check is vacuous"

@@ -172,6 +172,29 @@ tests/        one test per failure class, plus the invariants
 docs/         architecture, the roadmap, and the decision record
 ```
 
+## The first capability
+
+`configs/triage.yaml` is the first configuration that is not a worked example: triage a support
+inbox. Read a message an untrusted sender wrote, classify it, and escalate it when a person is
+needed.
+
+```bash
+uv run python cli.py run --config triage --task "Triage message 004." --confirmation-token local
+```
+
+Three tools, in `tools/triage.py`: `list_messages`, `read_message`, and `escalate` — the last a
+side effect, and therefore gated. The four messages in `messages/` are the domain's fixtures, and
+two of them are a deliberate pair:
+
+| message | what it is | which defence handles it |
+|---|---|---|
+| `003` | an instruction-override payload | the **scan** refuses it; the model never sees it |
+| `004` | a data exposure that says *not* to escalate | the payload **evades** the scan — the **model** is the only defence |
+
+That pair is the point. The obvious injection is caught before the model is asked anything, and
+the subtle one is not caught at all — so what the model does with it is measured rather than
+assumed. `make live` runs it.
+
 ## Where to read next
 
 **To understand why it is built this way.** [docs/architecture.md](docs/architecture.md) — the
