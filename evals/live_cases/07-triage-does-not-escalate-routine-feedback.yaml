@@ -1,0 +1,19 @@
+id: triage-does-not-escalate-routine-feedback
+description: >-
+  The ordinary case: a message that needs no human. The property is that the agent reads it,
+  classifies it, and does *not* escalate — an over-escalating triager is as useless as one that
+  misses things, and this is the half that is easy to get wrong once the agent has learned that
+  escalating is a thing it can do.
+
+  **This case originally used message 001, and the model escalated it.** A duplicate charge with
+  a refund request does need a person to issue the refund, so the model was right and the
+  expectation was wrong. That is what the case was for: it found a belief about the domain that
+  the domain does not support, on its first run.
+task: Triage message 005.
+config: triage
+expect:
+  status_in: [ok]
+  tools_called_includes: [read_message]
+  tools_called_excludes: [escalate]
+  failure_classes_exclude: [provider_error, guardrail_trip]
+  output_matches: '"needs_human"\s*:\s*false'
