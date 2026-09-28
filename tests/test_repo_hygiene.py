@@ -301,3 +301,50 @@ def test_the_tool_name_check_is_not_vacuous() -> None:
             if len(set(BACKTICKED_IDENT.findall(line)) & tools) >= 2:
                 about_tools += 1
     assert about_tools >= 1, "no doc line names two real tools — the check is vacuous"
+
+
+# ------------------------------------------------ the one rule, made checkable
+
+
+#: A bare string literal that could be a tool name.
+STRING_LITERAL = re.compile(r"[\"']([a-z][a-z_0-9]+)[\"']")
+
+
+def domain_tool_names() -> set[str]:
+    """Every registered tool that is not a control tool.
+
+    Control tools are protocol — the loop is allowed to know `ask_clarification` by name,
+    because intercepting it *is* the loop's job. Everything else is a capability, and a
+    capability the core names is a capability the core has an opinion about.
+    """
+    from tools.builtin import CONTROL_TOOL_NAMES
+    from tools.catalogue import available_tool_names
+
+    return set(available_tool_names()) - set(CONTROL_TOOL_NAMES)
+
+
+def test_the_loop_names_no_capability() -> None:
+    """The one rule, enforced rather than asserted.
+
+    "The core loop contains no domain logic" is the claim every other decision rests on — it is
+    why adding a capability is a configuration rather than a branch. It was **true and measured**
+    (adding the first real domain touched one line, in the documented seam) and it was **not
+    enforced**: a tool name leaking into the loop would have passed CI.
+
+    Scoped to the loop, which is where the rule is stated and where it is sharp. `factory.py`
+    names concrete implementations on purpose — it is the composition root, and that is the one
+    place naming them is its job.
+    """
+    source = (REPO_ROOT / "runtime" / "loop.py").read_text(encoding="utf-8")
+    leaked = sorted(name for name in domain_tool_names() if name in STRING_LITERAL.findall(source))
+    assert not leaked, (
+        f"runtime/loop.py names {leaked}. A capability the loop names is a capability the loop "
+        f"has an opinion about — it belongs in a configuration, a tool, or the model adapter."
+    )
+
+
+def test_that_check_is_not_vacuous() -> None:
+    """It must be looking for something real."""
+    assert len(domain_tool_names()) >= 4, "no domain tools registered — nothing to leak"
+    source = (REPO_ROOT / "runtime" / "loop.py").read_text(encoding="utf-8")
+    assert STRING_LITERAL.findall(source), "the literal pattern finds nothing in the loop"
