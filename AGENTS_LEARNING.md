@@ -1126,3 +1126,67 @@ code that behaves, and the branch that broke is the one that exists for when it 
 *Lesson: coverage measured in lines would have shown this branch as covered. What was missing was
 a path where the model is **wrong in a specific way** — and only a real model, or a scripted one
 told to be wrong that way, produces it.*
+
+### 2026-09-28 — The half of the runtime that had never run
+
+**L78. Counting firings found the gap faster than reading the roadmap did.**
+
+No second model was available, so the obvious next step had to come from the evidence. Rather than
+following the roadmap's order, I asked a blunter question: **which branches have never executed
+for real?** Counted every context event in every trace the project had ever produced:
+
+```
+context events:                    256
+summarisation / dropping fired:      0
+largest context ever assembled:  2,268 tokens
+soft threshold:                  8,000
+```
+
+**Zero.** The entire context-management half — summarisation, dropping, the soft/hard split, the
+adjacency window — had only ever run against synthetic input. And `make ci` was green, because a
+stub case drives the path and a stub case is not real content.
+
+*Lesson: "has this ever fired?" is a cheap, mechanical question and it found in two minutes what
+reading four documents did not. Coverage counts lines; this counts **executions**, and the gap
+between them is where the untested branches live.*
+
+**L79. And what fires is truncation, not summarisation — and the recovery is the model's.**
+
+`assembler.summarise` collapses whitespace and keeps the **first 300 characters**. Deliberate — a
+model-written summary is not deterministic and replay requires determinism — but the name promises
+more than the mechanism delivers, which is the `confirmation_token` defect class again.
+
+I built the input so the fact that matters is the first thing lost: a long routine thread with a
+cross-account data exposure at character ~4,500 of ~7,300, read first, while summarisation works
+oldest-first. Then ran it.
+
+```
+step 1: read 010, 011, 012, 013, 014
+step 2: summarisation fires → the model RE-READS 010
+step 3: summarisation fires again → the model re-reads 011 and 014
+step 4: escalate(010) — correct
+```
+
+It got it right, and its own summary said *"buried in a long routine thread"* — it knew.
+
+**But the recovery is the model's, not the runtime's.** The `[summarised]` marker is the only
+signal that information was lost, and the model read it as *"you had this and I took it away"* and
+went back. The runtime cannot tell whether an answer accounted for what was cut, and it does not
+try. **The step budget is the backstop** — this run used 6 of 8 steps and 8 reads for 5 messages,
+so a larger queue hits the bound rather than looping.
+
+*Lesson: I predicted "silent loss" and was wrong — both truncations leave a visible marker, so the
+loss is signalled. The right question was never "does it lose information" but **"does the model
+act on the signal"**, and that is only answerable by running it. My prediction was falsified in the
+good direction, which is the outcome worth writing down.*
+
+**L80. The new case cannot assert its own subject, and that is worth naming.**
+
+`triage-survives-context-summarisation` asserts the outcome — the right message, escalated. It
+**cannot** assert that summarisation fired: the live-case vocabulary has no way to say it. That is
+visible in the trace and not in the case.
+
+So if someone refactored the summarisation path away, the case would keep passing while testing
+something much weaker. Named rather than fixed, because it is the exact failure this project keeps
+finding — a test that has quietly stopped testing its subject — and because the fix (a
+context-shape assertion kind) is a change to the case schema, not to this case.

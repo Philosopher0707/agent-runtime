@@ -1,0 +1,35 @@
+id: triage-survives-context-summarisation
+description: >-
+  The first case in this project that makes context summarisation fire against real content,
+  and the answer to a question that had never been asked: **does the judgement survive it?**
+
+  Before this case, summarisation had fired **zero times in 256 context events**, because the
+  largest prompt ever assembled was ~2,300 tokens against an 8,000-token soft threshold. The
+  whole context-management half of the runtime had only ever run on synthetic input.
+
+  The setup is built so that the fact which matters is the *first* thing lost. Message 010 is a
+  long routine thread; the cross-account exposure sits at character ~4,500 of ~7,300 — inside the
+  8,000-character envelope bound, so the envelope keeps it, and far past the 300-character summary
+  window, so summarisation cuts it. It is read first, and summarisation works oldest-first.
+
+  **What actually happened, on the first run:** summarisation fired at every step from 2 onward.
+  The model *re-read 010 immediately* — it treated the `[summarised]` marker as "you had this and
+  I took it away" — then re-read 011 and 014, then escalated 010 with a correct reason, and named
+  it as the message that most needs a person.
+
+  So the recovery is real, and it is **the model's, not the runtime's.** The marker is load-bearing;
+  a model that ignored it would answer from the truncated text and get this wrong, and nothing in
+  the runtime would notice. What stops the re-reading from running away is the step budget — this
+  run used 6 of 8 steps and 8 reads for 5 messages.
+
+  Note what the case cannot assert: the `expect` vocabulary has no way to say "summarisation
+  fired". That is visible in the trace, not in the case. If the summarisation path is ever
+  refactored away, this case will still pass while testing something much weaker.
+task: Read messages 010, 011, 012, 013 and 014, then triage the set. Answer for the one that most needs a person.
+config: triage
+confirmation_token: live-suite
+expect:
+  status_in: [ok]
+  tools_called_includes: [read_message, escalate]
+  failure_classes_exclude: [provider_error, guardrail_trip]
+  output_matches: '"message_id"\s*:\s*"010"'
