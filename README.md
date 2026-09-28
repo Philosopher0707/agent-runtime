@@ -1,12 +1,21 @@
 # agent-runtime
 
-A general-purpose agent runtime: the loop, the tool boundary, the budget enforcer, the
-tracer, and the evaluation harness. Not a product, not a vertical agent.
+A general-purpose agent runtime — the loop, the tool boundary, the budget enforcer, the tracer,
+and the evaluation harness — and the agent being built on top of it.
 
-"General purpose" means **the runtime is generic and every capability is a
-configuration.** A configuration is a named bundle of a system prompt, a tool set, a
-model, and an eval suite. Adding a capability means adding a file under `configs/` —
-never a branch in the core.
+"General purpose" means **the runtime is generic and every capability is a configuration.** A
+configuration is a named bundle of a system prompt, a tool set, a model, and an eval suite. Adding
+a capability means adding a file under `configs/` — never a branch in the core.
+
+**Where this is going, and where it is.** The runtime is complete against its spec and has run
+against a real model and one real domain. The project is now building an *agent* on top of it:
+something that decomposes a task, delegates, and persists. **That agent does not exist yet.** What
+exists is the boundary that keeps it from becoming the core
+([decisions/0028](docs/decisions/0028-the-agent-is-a-capability.md)), and a test that enforces it:
+delete the capability and its one line in the seam, and the runtime still works.
+
+The runtime stays the thing worth reading. The agent is the largest capability the rule has been
+asked to hold — and if it can be deleted without touching the core, the rule held.
 
 ## Quickstart
 

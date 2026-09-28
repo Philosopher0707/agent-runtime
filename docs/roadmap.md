@@ -191,6 +191,29 @@ of half-finished verticals.
   configuration exists so it need not, and that should be a stated choice rather than an
   accident.
 
+## The agent — building on the runtime
+
+The project is building an agent: something that decomposes a task, delegates, and persists. It
+lives in `configs/` and `tools/`, and the boundary is
+[decisions/0028](decisions/0028-the-agent-is-a-capability.md).
+
+**The order below is not the order a proposal suggested, and the difference is the point.** That
+proposal listed seven things to add and put the prompt-hash schema first. But the planner it
+describes *is* sub-agent spawning — both are "a tool that starts a run" — and memory is two more
+tools. So the list collapses, and what is left starts with the one thing that makes the rest
+concrete.
+
+| step | why here |
+|---|---|
+| **1. A tool that starts a run** | The first genuinely new mechanism. It makes the budget, trace, confirmation and failure questions concrete instead of hypothetical — and 0028 already answers all four. It is also the planner: a config that plans is a config whose tool is this one. |
+| **2. Memory, as tools** | `remember` and `recall`. Two tools, not a layer — the constraint is that memory is **untrusted on read**, so it enters the envelope like any other content. A decision record before the tools. |
+| **3. Hierarchical budgets, for real** | Only once spawning exists, because that is when the allocation semantics stop being guesswork. 0028 states the rule; this step implements and tests it. |
+| **4. Tool selection at scale** | Only once a toolset is large enough that sending every schema is visibly worse than choosing. Premature before that, and the current answer is correct until it is not. |
+| **5. A durable scheduler** | Last, and a rewrite of the trace model — runs that pause, resume, and span processes. It should be done once, after the trace has stopped changing for other reasons. |
+
+**Every step must pass the delete test**, which now runs on every push:
+`test_the_core_imports_no_capability` fails if anything in `runtime/` imports past the seam.
+
 ## Deliberately not on this roadmap
 
 Not "later" — **not**, unless something changes:

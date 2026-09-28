@@ -1456,3 +1456,62 @@ docstrings, with a test asserting it ignores prose.
 *Lesson: the catalogue's rules were written for exactly this, and I broke the first one anyway —
 because a text search is easier to write than an AST walk, and the failure mode (flagging the
 prose that describes the fix) looks like the check working.*
+
+### 2026-09-28 — The pivot, and the boundary written before it
+
+**L99. A proposal's premises are worth checking before its conclusions are worth acting on.**
+
+A long proposal arrived for building a general agent on the runtime. Four of its checkable claims
+about the code were wrong:
+
+| the claim | the code |
+|---|---|
+| "the trace assumes gap-free `seq` numbering" | **there is no `seq`** — the envelope is `schema_version, ts, trace_id, event, payload` |
+| "the prompt is four parts" | **five** — and the combined `identity` part already exists |
+| "triage is a single-turn classification" | a triage run is **4 steps, 4 model calls, 2 tool calls** |
+| "decisions 0021–0025" | **all taken**; the log is at 0027 |
+
+The third is the one that matters: the proposal argued the runtime needed multi-turn,
+tool-selective behaviour and used triage as the *counter*-example. Triage is the example.
+
+And one premise was not checkable at all: the proposal's recommendation rested on a quotation
+attributed to the person asking, which **was not in the conversation.** Flagged rather than
+assumed — a conclusion resting on an unverified premise is not a conclusion.
+
+*Lesson: a well-written proposal is more dangerous than a badly-written one, because it reads as
+evidence. The claims were checkable in four commands.*
+
+**L100. But its best idea was better than any of its wrong claims.**
+
+*Can the capability be deleted and the runtime still work?* That is the invariant that keeps a
+growing project from becoming a framework for one kind of agent, and it was being applied by hand.
+It is a tripwire now: **`runtime/` may import the seam and nothing else under `tools/`.**
+
+With one correction. The proposal said "delete it, the runtime is unchanged" — but deleting
+`tools/triage.py` alone **breaks the import chain**, because `tools/builtin.py` imports it. The
+honest version is *delete the capability **and its one line in the seam***, and what is forbidden
+is the core reaching *past* the seam. The distinction is the whole design: a capability is named
+at the seam, which is where it is supposed to be named.
+
+**L101. And the plan collapsed when it was read carefully.**
+
+Seven additions were proposed. The planner it describes *is* sub-agent spawning — both are "a tool
+that starts a run" — and memory is two more tools. So the first step is not "extend the prompt-hash
+schema to N parts before writing any code"; it is **one tool that starts a run**, which is what
+makes the other questions concrete.
+
+And the four questions that tool raises — budget, trace, confirmation, failure — are answered in
+[decisions/0028](docs/decisions/0028-the-agent-is-a-capability.md) **before** the tool exists,
+because a boundary written after the first exception is a description of the exceptions.
+
+*Lesson: when a plan lists N things, check whether they are N mechanisms or one mechanism with N
+names. Here it was the latter, and the difference between "seven components" and "one tool" is the
+difference between a rewrite and a step.*
+
+**L102. The README had to change, and the honest version was smaller than the proposed one.**
+
+The proposal's suggested opening line was *"a general-purpose agent runtime **and the agent built
+on it**."* That claims the agent exists. It does not. The README now says where this is going and
+where it is, in that order, and states plainly that **the agent does not exist yet** — because a
+project whose documentation runs ahead of its code is the defect this repository has spent the
+whole session finding in itself.
