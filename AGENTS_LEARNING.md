@@ -1326,3 +1326,28 @@ dropped. The fixture had encoded the bug.
 
 *Lesson: a test fixture is a claim about what the system's inputs look like. This one claimed a
 transcript can be all answers and no questions, which is precisely what made the bug invisible.*
+
+**L88. And the cause took one more commit, which is the right shape.**
+
+0024 fixed the symptom and named the cause: `untrusted_max_chars` bounds what a tool *returns*, and
+**nothing bounded what the model asks for**. The assistant turn renders every call's arguments in
+full, so one step could add ~65,000 tokens that summarisation cannot touch and only the ceiling can
+remove.
+
+Bounded it the same day — `context.max_call_chars`, on the **turn** rather than each call, because
+sixteen bounded calls still add up. Decision 0025. The scenario that forced the ceiling now ends on
+`budget_exhausted:max_tokens_total`, a real bound, instead of on a structural failure.
+
+*Lesson: "fix the symptom, name the cause, then fix the cause" is worth doing in that order — the
+cause was only **findable** because the symptom had been made honest first. A transcript that lies
+about what happened hides the reason it is lying.*
+
+**L89. And the new bound could have silently broken every recorded run.**
+
+Changing what a prompt contains changes its hash, and replay refuses a hash that does not match —
+so a bound on rendered arguments could have invalidated the fixtures. **Checked rather than
+assumed:** the largest rendered arguments in any committed fixture are **415 characters** against a
+4,000-character bound, and all twenty-eight recorded-run tests pass unchanged.
+
+*Lesson: a prompt-visible change is a replay-visible change. The check took one command and it is
+the difference between "I do not think it affects them" and knowing.*

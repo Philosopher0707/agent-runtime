@@ -13,7 +13,7 @@ import pytest
 
 from context.assembler import ContextAssembler, ContextUnfit, summarise
 from runtime.config import ContextConfig
-from runtime.schemas import ToolDescriptor
+from runtime.schemas import ToolCallRequest, ToolDescriptor
 
 
 def make_assembler(
@@ -282,3 +282,71 @@ def test_the_hard_ceiling_measures_the_whole_request() -> None:
 def test_a_ceiling_below_the_overhead_refuses_rather_than_lying() -> None:
     with pytest.raises(ContextUnfit):
         make_assembler(tool_schemas=[schema(n) for n in "abc"], max_prompt_tokens=10).build(step=1)
+
+
+# ------------------------------------------- what the model asked for is bounded too
+
+
+def call(name: str = "tool", size: int = 50) -> ToolCallRequest:
+    return ToolCallRequest(name=name, arguments={"text": "x" * size})
+
+
+def test_a_turns_rendered_calls_are_bounded() -> None:
+    """A tool result is bounded by the envelope. The *request* was bounded by nothing.
+
+    The assistant turn carries every call's arguments in full, so sixteen calls with
+    8,000-character arguments added ~65,000 tokens in one step — which summarisation cannot
+    touch, because it only rewrites tool results, and which the hard ceiling could only answer
+    by dropping the request away from its own results.
+    """
+    assembler = make_assembler(max_call_chars=200)
+    assembler.add_assistant("", tool_calls=[call(size=5_000)])
+
+    rendered = assembler.build(step=1).messages[2]["content"]
+    assert len(rendered) < 400, "the turn was not bounded"
+    assert "omitted by the runtime" in rendered, "the loss was silent"
+
+
+def test_the_bound_is_on_the_turn_not_on_each_call() -> None:
+    """Sixteen bounded calls still add up, so the budget is the turn's."""
+    assembler = make_assembler(max_call_chars=300)
+    assembler.add_assistant("", tool_calls=[call(size=500) for _ in range(16)])
+
+    rendered = assembler.build(step=1).messages[2]["content"]
+    assert len(rendered) < 500, f"sixteen calls produced {len(rendered)} characters"
+
+
+def test_an_ordinary_turn_is_untouched() -> None:
+    """A guard on the bound: it must not fire on the normal case."""
+    assembler = make_assembler(max_call_chars=4_000)
+    assembler.add_assistant("thinking", tool_calls=[call(size=20)])
+
+    rendered = assembler.build(step=1).messages[2]["content"]
+    assert "omitted" not in rendered
+    assert "thinking" in rendered
+    assert "tool(" in rendered
+
+
+def test_bounding_the_request_stops_the_ceiling_being_forced() -> None:
+    """The point of the fix, stated as a test.
+
+    Before it, a step of large calls pushed the transcript over the hard ceiling, and the only
+    answer was to drop the request — which is what made the transcript incoherent. With the
+    request bounded, the same calls fit.
+    """
+    big_calls = [call(size=20_000) for _ in range(8)]
+
+    unbounded = make_assembler(
+        max_prompt_tokens=2_000, summarise_above_tokens=1_500, max_call_chars=100_000
+    )
+    unbounded.add_assistant("", tool_calls=big_calls)
+    with pytest.raises(ContextUnfit):
+        unbounded.build(step=1)
+
+    bounded = make_assembler(
+        max_prompt_tokens=2_000, summarise_above_tokens=1_500, max_call_chars=500
+    )
+    bounded.add_assistant("", tool_calls=big_calls)
+    assembled = bounded.build(step=1)
+    assert assembled.record.estimated_tokens <= 2_000
+    assert assembled.record.dropped_messages == 0, "nothing needed dropping"
