@@ -164,9 +164,13 @@ of half-finished verticals.
 
 ## Phase 3 — only once Phase 1 and 2 hold
 
-- **Context at real sizes.** Summarisation and dropping have only been exercised with
-  synthetic lengths. The soft/hard thresholds and the 400-character adjacency window are
-  judgement calls that real prompts will test.
+- **Context at real sizes — started, 2026-09-28.** Summarisation and dropping had only ever been
+  exercised with synthetic lengths; measured across every trace, they had fired **zero times**.
+  `evals/live_cases/11-triage-survives-context-summarisation.yaml` now drives them with real
+  content, and the answer is in [decisions/0022](decisions/0022-summarisation-is-truncation.md):
+  the mechanism is truncation, the marker is load-bearing, and the recovery belongs to the model.
+  What is **still** untested is the **hard ceiling** — dropping has never fired either, and the
+  `ContextUnfit` refusal has never met a real prompt.
 - **Concurrency.** The service handles one run at a time. The trace writer assumes one
   writer per file, which holds until it does not.
 - **Streaming.** Not needed for a request/response runtime; needed the moment there is a UI.
