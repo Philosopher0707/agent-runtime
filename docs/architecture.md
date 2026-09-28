@@ -93,6 +93,7 @@ returns nothing, and every vendor string lives in `providers/`.
 | The service is not reachable off-host by default | `AGENT_HOST` defaults to loopback | `test_service.py` |
 | The trace doc describes the actual trace | the doc's event table vs the writer's `emit` calls | `test_trace_schema_doc.py` |
 | A config-derived value in a prompt serialises order-independently | `sort_keys=True` on every `json.dumps` in `runtime/` | `test_replay.py` |
+| A step cannot dispatch an unbounded number of tool calls | `MAX_TOOL_CALLS_PER_STEP` in the dispatch loop | `test_loop.py` |
 
 The trace format itself — the envelope, every event and its payload, and the invariants that
 make replay exact — is documented in [`docs/trace-schema.md`](trace-schema.md).

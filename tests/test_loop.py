@@ -8,7 +8,10 @@ end that are not failures.
 from __future__ import annotations
 
 from providers.stub import StubProvider
-from runtime.status import RunStatus
+from runtime.loop import MAX_TOOL_CALLS_PER_STEP
+from runtime.replay import replay
+from runtime.schemas import RunOutput
+from runtime.status import FailureClass, RunStatus
 from runtime.trace import read_trace
 from tests.helpers import execute, make_config, text, tool_call, tool_calls
 
@@ -146,3 +149,113 @@ def test_the_status_is_derived_from_the_most_severe_claim(tracer) -> None:
     assert len(output.failures) >= 2
     # Nothing is hidden: both claims survive in the record.
     assert any(event.status is RunStatus.DEGRADED for event in output.failures)
+
+
+# ------------------------------------------------- how many calls one step may make
+
+
+def original_output(trace_path) -> RunOutput:
+    """The run as the trace recorded it."""
+    finished = read_trace(trace_path).first("run_finished")
+    assert finished is not None
+    return RunOutput.model_validate(finished.payload)
+
+
+def test_a_step_may_not_dispatch_an_unbounded_number_of_tool_calls(tracer) -> None:
+    """`max_steps` bounds steps. Nothing bounded the calls inside one.
+
+    A single model response may carry an arbitrary number of tool calls, and the loop
+    dispatched every one of them before consulting any budget — so one step could run for
+    `calls x timeout_s` against a wall-clock bound it was unable to interrupt. The spec says
+    no unbounded path may exist; this was one, in a place nobody had looked.
+    """
+    config = make_config(budget={"max_steps": 6})
+    asked = MAX_TOOL_CALLS_PER_STEP * 3
+    execute(
+        "go",
+        config=config,
+        tracer=tracer,
+        script=[tool_calls(*[("echo", {"text": f"c{n}"}) for n in range(asked)]), text("done")],
+    )
+    assert len(original_output(tracer.path).tool_calls) == MAX_TOOL_CALLS_PER_STEP
+
+
+def test_the_dropped_calls_are_recorded_not_silent(tracer) -> None:
+    """The class is `budget_exhausted` — an existing row, with the limit named.
+
+    Not a new taxonomy row: this is a budget, and `budget_exhausted:{limit}` already means
+    "a declared bound stopped something". Reusing it keeps the taxonomy closed.
+    """
+    config = make_config(budget={"max_steps": 6})
+    execute(
+        "go",
+        config=config,
+        tracer=tracer,
+        script=[
+            tool_calls(*[("echo", {"text": f"c{n}"}) for n in range(MAX_TOOL_CALLS_PER_STEP + 4)]),
+            text("done"),
+        ],
+    )
+    output = original_output(tracer.path)
+    assert FailureClass.BUDGET_EXHAUSTED in {FailureClass(c) for c in output.failure_classes}
+    assert output.status == RunStatus.DEGRADED, "the run can still continue"
+    detail = " ".join(f.detail or "" for f in output.failures)
+    assert str(MAX_TOOL_CALLS_PER_STEP) in detail
+
+
+def test_the_model_is_told_that_calls_were_dropped(tracer) -> None:
+    """Recorded is not enough — the model has to know, or it cannot ask again.
+
+    A turn that was silently half-answered is the failure this design keeps refusing to
+    have, which is why the loss is signalled in-band rather than only in the trace.
+    """
+    config = make_config(budget={"max_steps": 6})
+    provider = StubProvider(
+        script=[
+            tool_calls(*[("echo", {"text": f"c{n}"}) for n in range(MAX_TOOL_CALLS_PER_STEP + 3)]),
+            text("done"),
+        ]
+    )
+    execute("go", config=config, tracer=tracer, provider=provider)
+
+    second_prompt = provider.calls[1]
+    assert "were not acted on" in str(second_prompt), "the model was not told"
+
+
+def test_a_step_at_the_limit_is_untouched(tracer) -> None:
+    """The cap must not fire on an ordinary turn — a guard on the guard."""
+    config = make_config(budget={"max_steps": 6})
+    execute(
+        "go",
+        config=config,
+        tracer=tracer,
+        script=[
+            tool_calls(*[("echo", {"text": f"c{n}"}) for n in range(MAX_TOOL_CALLS_PER_STEP)]),
+            text("done"),
+        ],
+    )
+    output = original_output(tracer.path)
+    assert len(output.tool_calls) == MAX_TOOL_CALLS_PER_STEP
+    assert output.status == RunStatus.OK, "exactly at the limit is not over it"
+    assert output.failure_classes == []
+
+
+def test_the_cap_is_deterministic_so_a_capped_run_still_replays(tmp_path, tracer) -> None:
+    """A *count*, not a clock check, so replay stays exact.
+
+    `runtime/replay.py` says a wall-clock-bounded run only replays under a deterministic
+    clock. A budget check inside the dispatch loop would have made the number of dispatches
+    depend on the clock and widened that requirement to every run. This does not.
+    """
+    config = make_config(budget={"max_steps": 6})
+    execute(
+        "go",
+        config=config,
+        tracer=tracer,
+        script=[
+            tool_calls(*[("echo", {"text": f"c{n}"}) for n in range(MAX_TOOL_CALLS_PER_STEP + 5)]),
+            text("done"),
+        ],
+    )
+    replayed = replay(tracer.path, trace_dir=tmp_path / "replay")
+    assert replayed.canonical() == original_output(tracer.path).canonical()

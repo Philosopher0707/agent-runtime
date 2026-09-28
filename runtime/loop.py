@@ -48,6 +48,21 @@ from runtime.structured import parse_structured
 from runtime.trace import TraceWriter
 from tools.builtin import CLARIFICATION_TOOL_NAME
 
+#: The most tool calls one step may dispatch.
+#:
+#: `max_steps` bounds *steps*. Nothing bounded the calls inside one: a single model response
+#: may carry an arbitrary number of tool calls, and the loop dispatched every one of them
+#: before consulting any budget. So one step could run for `calls x timeout_s` against a
+#: wall-clock bound it was unable to interrupt — the "no unbounded path may exist" claim,
+#: false in a place nobody had looked.
+#:
+#: A constant rather than a fifth budget bound, for the same reason `MAX_ATTEMPTS` is one: it
+#: caps a single turn structurally rather than expressing a policy. It is also a **count**, so
+#: it is deterministic — a budget check here would have made the *number of dispatches* depend
+#: on the clock, and `runtime/replay.py` says plainly that a wall-clock-bounded run only
+#: replays identically under a deterministic clock. This widens no such requirement.
+MAX_TOOL_CALLS_PER_STEP = 16
+
 #: Outcome -> the taxonomy row it belongs to. A total mapping, so no outcome can
 #: arrive without a class.
 _OUTCOME_TO_CLASS: dict[ToolOutcome, FailureClass] = {
@@ -348,6 +363,8 @@ class _Orchestrator:
         assembler.add_assistant(response.text, tool_calls=response.tool_calls)
         terminal: str | None = None
         saw_clarification = False
+        dispatched = 0
+        suppressed = 0
 
         for call in response.tool_calls:
             if call.name == CLARIFICATION_TOOL_NAME:
@@ -362,12 +379,33 @@ class _Orchestrator:
                 # this turn's calls are not acted on.
                 continue
 
+            if dispatched >= MAX_TOOL_CALLS_PER_STEP:
+                suppressed += 1
+                continue
+
             record = self.tools.dispatch(
                 call, step=step, confirmation_token=self.confirmation_token
             )
+            dispatched += 1
             self.state.tool_records.append(record)
             self.tracer.tool_call(record)
             terminal = self._interpret(record, step, assembler)
+
+        if suppressed:
+            # Told to the model as well as recorded, because a turn that was silently
+            # half-answered is the failure this whole design keeps refusing to have.
+            self._record(
+                FailureClass.BUDGET_EXHAUSTED,
+                RunStatus.DEGRADED,
+                f"step {step}: {suppressed} of {len(response.tool_calls)} tool calls were "
+                f"not acted on (at most {MAX_TOOL_CALLS_PER_STEP} per turn)",
+                step=step,
+            )
+            assembler.add_runtime_note(
+                f"{suppressed} tool call(s) in that turn were not acted on: this runtime "
+                f"dispatches at most {MAX_TOOL_CALLS_PER_STEP} per turn. Ask again for the "
+                f"ones you still need."
+            )
 
         if terminal is not None:
             return terminal
