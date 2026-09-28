@@ -76,7 +76,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         request,
         config_root=args.config_root,
         trace_dir=args.trace_dir,
-        notes_root=args.notes_root,
+        # Named here rather than in the core: `--notes-root` is a flag *about notes*, so this
+        # entry point knowing which tool writes them is the flag's meaning, not a leak.
+        tool_overrides={"write_note": {"root": args.notes_root}},
     )
     return _emit(output, quiet=args.quiet, trace_dir=args.trace_dir)
 

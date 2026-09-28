@@ -12,6 +12,14 @@ tools:
   - write_note
   - clock
 
+tool_options:
+  # Where the notes go. Declared here rather than hard-coded in the core, which used to name
+  # this tool specifically — see docs/decisions/0027. A caller may still redirect it (the CLI's
+  # `--notes-root`, a test's temporary directory); what it may not do is make the core know a
+  # tool's name.
+  write_note:
+    root: .notes
+
 provider:
   kind: stub
   model: stub-mid-tier

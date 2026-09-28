@@ -14,6 +14,7 @@ import time
 from collections.abc import Callable, Iterable
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 from providers.base import Provider
 from providers.openai_compat import OpenAICompatProvider
@@ -64,14 +65,28 @@ def build_tools(
     config: Configuration,
     *,
     extra: Iterable[Tool] = (),
-    notes_root: str | Path = DEFAULT_NOTES_ROOT,
+    overrides: dict[str, dict[str, Any]] | None = None,
     **registry_kwargs: object,
 ) -> ToolRegistry:
-    """Build the tool set a configuration names."""
+    """Build the tool set a configuration names.
+
+    The configuration declares what each of its tools is constructed with, in
+    ``tool_options``. ``overrides`` lets a caller redirect one — a CLI flag, a per-case
+    temporary directory — without the core knowing any tool's name.
+
+    That distinction is the point. This function used to pass
+    ``{"write_note": {"root": ...}}`` itself, so **only a tool that happened to be called
+    `write_note` could ever receive an argument** — and the triage tools worked only because
+    their default directory happened to be right. A capability could not configure its own
+    tools, and the core named one anyway.
+    """
+    tool_kwargs = {name: dict(options) for name, options in config.tool_options.items()}
+    for name, options in (overrides or {}).items():
+        tool_kwargs.setdefault(name, {}).update(options)
     return build_registry(
         config.tools,
         extra=extra,
-        tool_kwargs={"write_note": {"root": notes_root}},
+        tool_kwargs=tool_kwargs,
         **registry_kwargs,  # type: ignore[arg-type]
     )
 
@@ -81,7 +96,7 @@ def run_task(
     *,
     config_root: str | Path = DEFAULT_CONFIG_DIR,
     trace_dir: str | Path = DEFAULT_TRACE_DIR,
-    notes_root: str | Path = DEFAULT_NOTES_ROOT,
+    tool_overrides: dict[str, dict[str, Any]] | None = None,
     clock: Callable[[], float] = time.monotonic,
     extra_tools: Iterable[Tool] = (),
     **registry_kwargs: object,
@@ -93,7 +108,7 @@ def run_task(
     """
     config = load_config_by_name(request.config, root=config_root)
     provider = build_provider(config.provider)
-    registry = build_tools(config, extra=extra_tools, notes_root=notes_root, **registry_kwargs)
+    registry = build_tools(config, extra=extra_tools, overrides=tool_overrides, **registry_kwargs)
     trace_id = request.trace_id or new_trace_id()
     try:
         with TraceWriter(trace_dir, trace_id) as tracer:

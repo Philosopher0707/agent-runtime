@@ -1419,3 +1419,40 @@ No provider, no key, an unparseable verdict, a verdict outside the enum — ever
 *problem*, never a skip. The placeholder already said this and it was right: **a judge that
 returns "pass" when it cannot judge is worse than no judge at all.** Twelve unit tests run in CI
 with a stub provider, so the machinery is covered with no key.
+
+### 2026-09-28 — Additive, measured, and the one place it leaked
+
+**L96. "Is this architecture additive?" is answerable from the diff, not from opinion.**
+
+Measured it. Adding the first real domain touched **eighteen new files, one line in an existing
+source file** (`tools/builtin.py`, the documented seam), and **no core logic** — the only
+`runtime/` change in that PR was the one-word replay fix, which was a pre-existing bug the domain
+exposed rather than part of adding it.
+
+*Lesson: "is it extensible?" is usually argued. It can be measured — count the files an addition
+touched and ask how many were existing. The number is the answer.*
+
+**L97. But it was measured, not enforced — and the check found the leak on its first run.**
+
+The one rule — *the core loop contains no domain logic* — had no test. A tool name in the core
+would have passed CI. Added the check; it immediately found that `runtime/factory.py` passed
+`{"write_note": {"root": ...}}` itself, so **only a tool that happened to be called `write_note`
+could receive a constructor argument**, and the triage tools worked because their *default*
+directory happened to be right.
+
+Fixed by giving configurations a `tool_options` map (0027). **The check then covered all of
+`runtime/`** instead of just the loop, which is what the rule actually says.
+
+*Lesson: a claim that has only ever been measured is a claim that will drift. Measuring it found
+the leak; making it a check is what keeps it true.*
+
+**L98. And my first version of the check had the bug it was written to catch.**
+
+It searched the core's **text**, and flagged `config.py` and `factory.py` for naming `write_note`
+— **in the docstrings explaining why they no longer name it in code.** That is the tripwire
+catalogue's first rule: *AST over text, always.* The check now walks the AST and excludes
+docstrings, with a test asserting it ignores prose.
+
+*Lesson: the catalogue's rules were written for exactly this, and I broke the first one anyway —
+because a text search is easier to write than an AST walk, and the failure mode (flagging the
+prose that describes the fix) looks like the check working.*

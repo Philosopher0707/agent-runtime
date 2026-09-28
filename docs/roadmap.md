@@ -230,15 +230,13 @@ what remains is not a task:
 | A second domain | The one untested claim — **"any capability is a configuration" has been tested exactly once** |
 
 **Except one, found by asking whether the architecture is additive** (and it is — adding the first
-domain touched one line, in the documented seam):
+domain touched one line, in the documented seam) — and that one is now **done, 2026-09-28**:
 
-| what | why it matters |
+| what | outcome |
 |---|---|
-| **The core hard-codes one tool's constructor argument** | `runtime/factory.py` passes `tool_kwargs={"write_note": {"root": notes_root}}`, so **only a tool that happens to be called `write_note` can receive one.** The triage tools work because their default (`Path("messages")`) is right, not because a configuration chose it. Latent: nothing is broken, and nothing is configurable. The fix is a config surface for tool options, which is a schema change rather than a patch. |
+| The core hard-coded one tool's constructor argument | Fixed by [decisions/0027](decisions/0027-tool-options-are-configuration.md). A configuration declares its tools' arguments in `tool_options`; the core names no tool; the one-rule check now covers **all** of `runtime/` rather than just the loop. |
 
-That one is recorded rather than fixed because it is latent and the fix is a schema change —
-and because finding it took a question nobody had asked. It is the first item on this roadmap in
-a while that is a task.
+So the list really is empty again, and this time the claim is enforced rather than asserted.
 
 So the next step is a product decision rather than an engineering one:
 

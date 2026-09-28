@@ -7,10 +7,10 @@ from typing import Any
 
 from providers.stub import StubProvider
 from runtime.config import Configuration, validate_config
+from runtime.factory import build_tools
 from runtime.loop import run
 from runtime.schemas import ModelResponse, RunOutput
 from runtime.trace import TraceWriter
-from tools.catalogue import build_registry
 from tools.registry import Tool
 
 BASE_CONFIG: dict[str, Any] = {
@@ -84,13 +84,14 @@ def execute(
     """Run one task against a stub provider, with retry sleeps removed."""
     owns_registry = registry is None
     if registry is None:
-        tool_kwargs: dict[str, dict[str, Any]] = {}
-        if notes_root is not None:
-            tool_kwargs["write_note"] = {"root": notes_root}
-        registry = build_registry(
-            config.tools,
+        # `build_tools` rather than `build_registry`, so a test starts from what the
+        # configuration declares and exercises the same wiring a run does. Building the kwargs
+        # here would let the harness and production drift — which is the shape of the bug that
+        # made the core name a tool in the first place (decisions/0027).
+        registry = build_tools(
+            config,
             extra=list(tools),
-            tool_kwargs=tool_kwargs,
+            overrides=({"write_note": {"root": notes_root}} if notes_root is not None else None),
             sleep=lambda _seconds: None,
             jitter=lambda _low, _high: 0.0,
             **registry_kwargs,
