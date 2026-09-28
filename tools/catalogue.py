@@ -35,6 +35,7 @@ def build_registry(
     *,
     extra: Iterable[Tool] = (),
     tool_kwargs: dict[str, dict[str, Any]] | None = None,
+    facilities: dict[str, Any] | None = None,
     **registry_kwargs: Any,
 ) -> ToolRegistry:
     """Build a registry for a configuration.
@@ -43,8 +44,14 @@ def build_registry(
     * A tool in ``extra`` **replaces** a built-in of the same name. That is how the
       eval harness substitutes a scripted double for a real tool without editing the
       configuration under test.
+    * ``facilities`` are runtime capabilities a tool may need — a way to start a run, say. A
+      tool declares which it wants with a ``needs`` class attribute naming the *parameter*, and
+      the facility is passed to any factory that asks. **The catalogue never learns a tool's
+      name this way**, which is what lets the core supply a runner without the core knowing
+      that `spawn_agent` exists.
     """
     tool_kwargs = tool_kwargs or {}
+    facilities = facilities or {}
     overrides = list(extra)
     override_names = {tool.name for tool in overrides}
 
@@ -53,7 +60,13 @@ def build_registry(
     for name in wanted:
         if name in override_names:
             continue
-        tools.append(build_tool(name, **tool_kwargs.get(name, {})))
+        factory = BUILTIN_TOOLS.get(name)
+        kwargs = dict(tool_kwargs.get(name, {}))
+        if factory is not None:
+            for facility in getattr(factory, "needs", ()):
+                if facility in facilities:
+                    kwargs[facility] = facilities[facility]
+        tools.append(build_tool(name, **kwargs))
 
     return ToolRegistry(tools, **registry_kwargs)
 

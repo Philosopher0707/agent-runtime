@@ -19,6 +19,7 @@ from typing import Any
 from providers.base import Provider
 from providers.openai_compat import OpenAICompatProvider
 from providers.stub import StubProvider
+from runtime.budget import Budget
 from runtime.config import (
     DEFAULT_CONFIG_DIR,
     ConfigError,
@@ -28,7 +29,7 @@ from runtime.config import (
     read_api_key,
 )
 from runtime.loop import run
-from runtime.schemas import RunOutput, RunRequest
+from runtime.schemas import RunOutput, RunRequest, SpawnRequest, SpawnResult, SpawnRunner
 from runtime.trace import TraceWriter, new_trace_id
 from tools.catalogue import build_registry
 from tools.registry import Tool, ToolRegistry
@@ -66,6 +67,7 @@ def build_tools(
     *,
     extra: Iterable[Tool] = (),
     overrides: dict[str, dict[str, Any]] | None = None,
+    facilities: dict[str, Any] | None = None,
     **registry_kwargs: object,
 ) -> ToolRegistry:
     """Build the tool set a configuration names.
@@ -73,6 +75,10 @@ def build_tools(
     The configuration declares what each of its tools is constructed with, in
     ``tool_options``. ``overrides`` lets a caller redirect one — a CLI flag, a per-case
     temporary directory — without the core knowing any tool's name.
+
+    ``facilities`` are runtime capabilities a tool may need, passed by *parameter* name to any
+    factory that declares it wants one. That is how this function supplies a way to start a run
+    without ever naming the tool that uses it — see `tools/catalogue.py`.
 
     That distinction is the point. This function used to pass
     ``{"write_note": {"root": ...}}`` itself, so **only a tool that happened to be called
@@ -87,8 +93,103 @@ def build_tools(
         config.tools,
         extra=extra,
         tool_kwargs=tool_kwargs,
+        facilities=facilities,
         **registry_kwargs,  # type: ignore[arg-type]
     )
+
+
+def spawn_runner(
+    *,
+    budget: Budget,
+    config_root: str | Path,
+    trace_dir: str | Path,
+    parent_config: str,
+    parent_token: str | None,
+    clock: Callable[[], float],
+) -> SpawnRunner:
+    """A callable a tool can use to start a run.
+
+    Built here rather than in the tool, because a tool must not import the loop — and because
+    the parent's live budget is the thing the allocation comes from, and only the composition
+    root holds it.
+
+    **A child gets no runner of its own.** That is what makes spawning one level deep: the
+    child's tools are built without this facility, so its `spawn_agent` (if its configuration
+    names one) has no way to start anything and refuses. Recursion is a decision nobody has
+    needed to take, and this is the shape of not taking it by accident.
+    """
+
+    def run_spawn(request: SpawnRequest) -> SpawnResult:
+        child_config = load_config_by_name(request.config or parent_config, root=config_root)
+        child_budget = budget.allocate(request.share)
+        provider = build_provider(child_config.provider)
+        registry = build_tools(
+            child_config,
+            # No `facilities`: a spawned run cannot spawn.
+            sleep=lambda _seconds: None,
+            jitter=lambda _low, _high: 0.0,
+        )
+        trace_id = new_trace_id()
+        try:
+            with TraceWriter(trace_dir, trace_id) as tracer:
+                output = run(
+                    request.task,
+                    config=child_config,
+                    provider=provider,
+                    tools=registry,
+                    tracer=tracer,
+                    budget=child_budget,
+                    confirmation_token=parent_token if request.inherit_confirmation else None,
+                    clock=clock,
+                )
+        finally:
+            registry.close()
+        # Charge what the child *spent*, not what it was allowed. Charging the allocation would
+        # make a spawn cost the parent its whole share whether or not the child used it.
+        budget.charge(child_budget)
+        return SpawnResult(
+            trace_id=trace_id,
+            status=str(output.status),
+            output=output.output,
+            reason=output.reason,
+            steps=output.steps,
+            cost_usd=child_budget.cost_usd,
+            tokens_total=child_budget.tokens_total,
+        )
+
+    return run_spawn
+
+
+def run_facilities(
+    *,
+    budget: Budget,
+    config: Configuration,
+    config_root: str | Path,
+    trace_dir: str | Path,
+    token: str | None,
+    clock: Callable[[], float],
+) -> dict[str, Any]:
+    """The runtime facilities a tool may need, for one run.
+
+    **Every entry point supplies these**, and that is the point of having a function rather than
+    inlining it in `run_task`. A facility wired in one entry point and not another is a tool that
+    works from the CLI and fails from the eval harness — which is exactly what happened: the
+    first live sweep came back `degraded` because `spawn_agent` had no runner, and the only place
+    that had wired one was `run_task`.
+
+    A tool that needs no facility ignores this. A configuration that names no such tool is
+    unaffected.
+    """
+    return {
+        "runner": spawn_runner(
+            budget=budget,
+            config_root=config_root,
+            trace_dir=trace_dir,
+            parent_config=config.name,
+            parent_token=token,
+            clock=clock,
+        )
+    }
 
 
 def run_task(
@@ -108,7 +209,25 @@ def run_task(
     """
     config = load_config_by_name(request.config, root=config_root)
     provider = build_provider(config.provider)
-    registry = build_tools(config, extra=extra_tools, overrides=tool_overrides, **registry_kwargs)
+    # The budget is built here rather than inside the loop, because a spawned run's allocation
+    # comes out of it — and only the composition root holds the live instance.
+    budget = Budget.from_config(config.budget, clock=clock)
+    registry = build_tools(
+        config,
+        extra=extra_tools,
+        overrides=tool_overrides,
+        # Generic, by parameter name: the core supplies a way to start a run without ever
+        # naming the tool that uses it. A configuration that names no such tool ignores this.
+        facilities=run_facilities(
+            budget=budget,
+            config=config,
+            config_root=config_root,
+            trace_dir=trace_dir,
+            token=request.confirmation_token,
+            clock=clock,
+        ),
+        **registry_kwargs,
+    )
     trace_id = request.trace_id or new_trace_id()
     try:
         with TraceWriter(trace_dir, trace_id) as tracer:
@@ -118,6 +237,7 @@ def run_task(
                 provider=provider,
                 tools=registry,
                 tracer=tracer,
+                budget=budget,
                 confirmation_token=request.confirmation_token,
                 clock=clock,
                 revision=current_revision(),

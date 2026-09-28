@@ -13,6 +13,7 @@ contract to be real.
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -22,8 +23,9 @@ import yaml
 from evals.judge import DETERMINISTIC_SCORER
 from providers.base import Provider
 from providers.stub import StubProvider
+from runtime.budget import Budget
 from runtime.config import Configuration, apply_overrides, load_config_by_name
-from runtime.factory import build_provider, build_tools
+from runtime.factory import build_provider, build_tools, run_facilities
 from runtime.loop import run
 from runtime.schemas import RunOutput, ToolCallRecord, TraceRecord
 from runtime.trace import TraceWriter, new_trace_id, read_trace
@@ -76,12 +78,21 @@ def run_case(
     )
 
     extra_tools = _scripted_tools(case.get("tools") or {})
+    budget = Budget.from_config(config.budget)
     registry = build_tools(
         config,
         extra=extra_tools,
         # The case's own notes directory, applied *over* what the configuration declares — so
         # the golden set exercises the same wiring a run does.
         overrides={"write_note": {"root": notes_root}},
+        facilities=run_facilities(
+            budget=budget,
+            config=config,
+            config_root=config_root,
+            trace_dir=trace_dir,
+            token=case.get("confirmation_token"),
+            clock=time.monotonic,
+        ),
         # Retries must not actually sleep in the harness, or the golden set is slow.
         sleep=lambda _seconds: None,
         jitter=lambda _low, _high: 0.0,

@@ -1,0 +1,43 @@
+id: verify-sweep-delegates-and-combines
+description: >-
+  A run that starts runs. The first case that exercises the agent layer's only new mechanism.
+
+  The parent is asked to check four claims. It has `spawn_agent`, and its configuration gives each
+  child a share of what is left. What the case asserts is the *mechanism*: the parent delegates,
+  the children finish, and the parent combines their findings into one answer.
+
+  What the first real run did, and why it is worth having:
+
+  ```
+  PARENT   status=ok  steps=4  cost=$0.0174  tools=[list_sources, spawn_agent, spawn_agent]
+    ├─ bd77325731674139  status=ok  steps=4  cost=$0.0052
+    └─ b8032b9671b747a5  status=ok  steps=3  cost=$0.0049
+  ```
+
+  The parent wrote **self-contained tasks** for its children — *"You are fact-checking two claims
+  about a product called 'Northwind Sync'…"* — because the tool's description says the child
+  cannot see the conversation. That is the model doing what it was asked, not the runtime
+  enforcing anything.
+
+  **Deliberately not promoted to a fixture.** Replaying the parent does not reproduce its cost:
+  the spawn is served from the record, so the children's budget is never created and never
+  charged, and the replay reports the parent's own spend only. A fixture whose replay diverges
+  would be a failing test dressed as coverage, and `tests/test_recorded_runs.py` would refuse it.
+  The fix is a schema change — a tool must be able to report the budget it consumed, and the
+  record must be what replay restores. Recorded in decisions/0030.
+task: >-
+  Check these four claims against the sources:
+
+  1. Northwind Sync targets 99.9% availability.
+  2. Request logs are retained for 90 days.
+  3. The service fails over automatically between regions.
+  4. Support responds to urgent issues within four business hours.
+config: verify_sweep
+confirmation_token: live-suite
+expect:
+  status_in: [ok]
+  tools_called_includes: [spawn_agent]
+  failure_classes_exclude: [provider_error, guardrail_trip]
+  output_matches_all:
+    - '"verdict"'
+    - '99\.9%'

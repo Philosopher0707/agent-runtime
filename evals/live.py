@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -41,6 +42,7 @@ from evals.judge import (
     grade,
     judge_question,
 )
+from runtime.budget import Budget
 from runtime.config import (
     ConfigError,
     apply_overrides,
@@ -48,7 +50,7 @@ from runtime.config import (
     load_env_file,
     read_api_key,
 )
-from runtime.factory import build_provider, build_tools
+from runtime.factory import build_provider, build_tools, run_facilities
 from runtime.loop import run
 from runtime.schemas import RunOutput
 from runtime.trace import TraceWriter, new_trace_id
@@ -243,10 +245,23 @@ def run_case(case: dict[str, Any]) -> LiveResult:
         )
 
     extra = _scripted_tools(case.get("tools") or {})
+    # A budget and the facilities, built here for the same reason `run_task` builds them: a tool
+    # that needs a runtime facility must work the same from every entry point. Wiring it in one
+    # and not another is a tool that works from the CLI and fails from the harness — which is
+    # exactly what the first live sweep did.
+    budget = Budget.from_config(config.budget)
     registry = build_tools(
         config,
         extra=extra,
         overrides={"write_note": {"root": notes_root}},
+        facilities=run_facilities(
+            budget=budget,
+            config=config,
+            config_root=CONFIG_ROOT,
+            trace_dir=LIVE_TRACE_DIR,
+            token=case.get("confirmation_token"),
+            clock=time.monotonic,
+        ),
         sleep=lambda _seconds: None,
         jitter=lambda _low, _high: 0.0,
     )
@@ -260,6 +275,7 @@ def run_case(case: dict[str, Any]) -> LiveResult:
                 provider=provider,
                 tools=registry,
                 tracer=tracer,
+                budget=budget,
                 confirmation_token=case.get("confirmation_token"),
             )
     finally:
