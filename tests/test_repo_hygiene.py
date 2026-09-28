@@ -459,3 +459,94 @@ def test_the_seam_check_is_not_vacuous() -> None:
     imports = core_tool_imports()
     assert imports, "the check found no tools imports at all — it is reading nothing"
     assert {module for _, module in imports} <= TOOL_SEAM, "the core already imports past the seam"
+
+
+# ------------------------------- every entry point wires the same facilities
+
+
+def build_tools_call_sites() -> list[tuple[Path, int, str]]:
+    """Every call to `build_tools`, outside the runtime that defines it.
+
+    Read from the AST rather than the text, for the reason the catalogue's first rule gives — and
+    because a call spanning several lines is exactly what a text search gets wrong.
+    """
+    sites: list[tuple[Path, int, str]] = []
+    for path in sorted(REPO_ROOT.rglob("*.py")):
+        if ".venv" in path.parts or path.parent.name == "runtime":
+            continue
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", "")
+            if name == "build_tools":
+                sites.append((path, node.lineno, path.read_text(encoding="utf-8")))
+    return sites
+
+
+def test_every_entry_point_that_runs_a_task_supplies_the_facilities() -> None:
+    """A facility wired in one entry point and not another is a tool that works from the CLI and
+    fails from the harness.
+
+    That is not hypothetical: the first live sweep came back `degraded` because `spawn_agent` had
+    no runner. `run_task` wired one; the live harness, the golden harness and the test helper did
+    not.
+
+    **Scoped to files that actually run a task.** Building a registry to *inspect* it — counting
+    the tools, checking a config loads — needs no facilities, and demanding them there would be
+    noise that teaches people to add `facilities=None` to make a check go quiet.
+    """
+    offenders: list[str] = []
+    for path in sorted(REPO_ROOT.rglob("*.py")):
+        if ".venv" in path.parts or path.parent.name == "runtime":
+            continue
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        if not any(_is_named_call(node, "run") for node in ast.walk(tree)):
+            continue
+        for node in ast.walk(tree):
+            if _is_named_call(node, "build_tools") and "facilities=" not in _call_text(
+                path, node.lineno
+            ):
+                offenders.append(f"{path.relative_to(REPO_ROOT)}:{node.lineno}")
+    assert not offenders, (
+        f"these build_tools call sites run a task but pass no facilities: {offenders}. Use "
+        f"run_facilities() — a tool that needs a runtime facility must work the same everywhere."
+    )
+
+
+def _is_named_call(node: ast.AST, name: str) -> bool:
+    """A call to a **bare name**, not an attribute.
+
+    `from runtime.loop import run` is called as `run(...)`; `uvicorn.run(...)` is not the same
+    function and is not a run of a task. Matching attributes made the first version of this check
+    flag `service/app.py` for starting a web server.
+    """
+    return isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == name
+
+
+def _call_text(path: Path, lineno: int) -> str:
+    """The source of the call starting at ``lineno``, up to the next dedent."""
+    lines = path.read_text(encoding="utf-8").splitlines()
+    start = lineno - 1
+    indent = len(lines[start]) - len(lines[start].lstrip())
+    collected = [lines[start]]
+    for line in lines[start + 1 :]:
+        if line.strip() and (len(line) - len(line.lstrip())) <= indent:
+            break
+        collected.append(line)
+    return "\n".join(collected)
+
+
+def test_the_facility_check_is_not_vacuous() -> None:
+    """It must be finding files that run tasks, and sites that wire facilities."""
+    runners = [
+        path
+        for path in REPO_ROOT.rglob("*.py")
+        if ".venv" not in path.parts
+        and path.parent.name != "runtime"
+        and any(_is_named_call(node, "run") for node in ast.walk(ast.parse(path.read_text())))
+    ]
+    assert len(runners) >= 3, f"only {len(runners)} files call run() — is the check reading?"
+    wired = [path for path in runners if "facilities=" in path.read_text(encoding="utf-8")]
+    assert wired, "no file that runs a task wires facilities — the check proves nothing"

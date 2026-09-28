@@ -6,6 +6,8 @@ components, or between the runtime and the outside world, it is one of these.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -306,6 +308,60 @@ class TraceRecord(Contract):
         return matches[0] if matches else None
 
 
+@dataclass(frozen=True)
+class SpawnRequest:
+    """A request to start a run from inside a run.
+
+    **The shape lives in the runtime, not in the tool that asks for it.** Starting a bounded,
+    traced, replayable run *is* what this runtime does; deciding *when* to is the agent's. So
+    the mechanism is a primitive here and the judgement is a capability in `tools/`, which is
+    what keeps the core from importing a tool and the delete test passing.
+    """
+
+    task: str
+    #: Which configuration the child runs. ``None`` means "the same shape as the parent".
+    config: str | None
+    #: The fraction of the parent's *remaining* budget the child may use.
+    share: float
+    #: Whether the child may use the caller's confirmation token. Off unless a configuration
+    #: says otherwise — see decisions/0028.
+    inherit_confirmation: bool
+
+
+@dataclass(frozen=True)
+class SpawnResult:
+    """What a spawned run reported back."""
+
+    trace_id: str
+    status: str
+    output: str | None
+    reason: str | None
+    steps: int
+    cost_usd: float
+    tokens_total: int
+
+    def render(self) -> str:
+        """How the child's outcome reaches the parent's transcript.
+
+        The trace id is in the *header*, not buried, because the child's trace is the only place
+        its reasoning lives. This string is also the linkage between the two traces: the
+        parent's `tool_call` record carries it, which is what makes each findable from the other.
+        """
+        header = (
+            f"[sub-agent] status={self.status} steps={self.steps} "
+            f"cost=${self.cost_usd:.4f} trace={self.trace_id}"
+        )
+        if self.reason:
+            header += f" reason={self.reason}"
+        body = self.output if self.output is not None else "(no answer)"
+        return f"{header}\n{body}"
+
+
+#: How a run is started from inside a run. Injected by the composition root, never imported by
+#: a tool — a tool that imported the loop would invert the layering that keeps the core general.
+SpawnRunner = Callable[["SpawnRequest"], "SpawnResult"]
+
+
 __all__ = [
     "ContextRecord",
     "Contract",
@@ -316,6 +372,9 @@ __all__ = [
     "ModelResponse",
     "RunOutput",
     "RunRequest",
+    "SpawnRequest",
+    "SpawnResult",
+    "SpawnRunner",
     "ToolCallRecord",
     "ToolCallRequest",
     "ToolDescriptor",

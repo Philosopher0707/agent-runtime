@@ -221,11 +221,12 @@ concrete.
 
 | step | why here |
 |---|---|
-| **1. A tool that starts a run** | The first genuinely new mechanism. It makes the budget, trace, confirmation and failure questions concrete instead of hypothetical — and 0028 already answers all four. It is also the planner: a config that plans is a config whose tool is this one. |
-| **2. Memory, as tools** | `remember` and `recall`. Two tools, not a layer — the constraint is that memory is **untrusted on read**, so it enters the envelope like any other content. A decision record before the tools. |
-| **3. Hierarchical budgets, for real** | Only once spawning exists, because that is when the allocation semantics stop being guesswork. 0028 states the rule; this step implements and tests it. |
-| **4. Tool selection at scale** | Only once a toolset is large enough that sending every schema is visibly worse than choosing. Premature before that, and the current answer is correct until it is not. |
-| **5. A durable scheduler** | Last, and a rewrite of the trace model — runs that pause, resume, and span processes. It should be done once, after the trace has stopped changing for other reasons. |
+| **1. A tool that starts a run — done, 2026-09-28** | The first genuinely new mechanism. It made the budget, trace, confirmation and failure questions concrete, and [decisions/0030](decisions/0030-starting-a-run-from-inside-a-run.md) records all four verified live. It is also the planner: a config that plans is a config whose tool is this one. **It also found the first defect of the agent layer** — replay understates a spawned run's cost, because the charge only happens when a child actually runs. |
+| **2. Let a tool report the budget it consumed** | The fix for the above, and it comes before anything else because it is a *correctness* gap rather than a missing feature. `ToolCallRecord` gains a spend; the loop charges it when it interprets the record, on both paths, so the charge comes from the trace and not from re-running the child. Until this lands, no spawned run can be a fixture. |
+| **3. Memory, as tools** | `remember` and `recall`. Two tools, not a layer — the constraint is that memory is **untrusted on read**, so it enters the envelope like any other content. A decision record before the tools. |
+| **4. Hierarchical budgets, for real** | The allocation exists and is tested; what is missing is a *reservation*, which matters the moment two children run at once. Deferred until concurrency exists, because until then the charge-back is sufficient and the code says so. |
+| **5. Tool selection at scale** | Only once a toolset is large enough that sending every schema is visibly worse than choosing. Premature before that, and the current answer is correct until it is not. |
+| **6. A durable scheduler** | Last, and a rewrite of the trace model — runs that pause, resume, and span processes. It should be done once, after the trace has stopped changing for other reasons. |
 
 **Every step must pass the delete test**, which now runs on every push:
 `test_the_core_imports_no_capability` fails if anything in `runtime/` imports past the seam.

@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable, Iterable, Sequence
+from pathlib import Path
 from typing import Any
 
 from providers.stub import StubProvider
+from runtime.budget import Budget
 from runtime.config import Configuration, validate_config
-from runtime.factory import build_tools
+from runtime.factory import build_tools, run_facilities
 from runtime.loop import run
 from runtime.schemas import ModelResponse, RunOutput
 from runtime.trace import TraceWriter
@@ -92,6 +95,14 @@ def execute(
             config,
             extra=list(tools),
             overrides=({"write_note": {"root": notes_root}} if notes_root is not None else None),
+            facilities=run_facilities(
+                budget=budget or Budget.from_config(config.budget),
+                config=config,
+                config_root=Path("configs"),
+                trace_dir=Path(".traces/test"),
+                token=confirmation_token,
+                clock=clock or _monotonic,
+            ),
             sleep=lambda _seconds: None,
             jitter=lambda _low, _high: 0.0,
             **registry_kwargs,
@@ -125,7 +136,6 @@ def execute(
 
 
 def _monotonic() -> float:
-    import time
 
     return time.monotonic()
 

@@ -16,6 +16,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from tools.registry import Tool, ToolError
+from tools.subagent import SpawnAgentTool
 from tools.triage import TRIAGE_TOOLS
 from tools.verify import VERIFY_TOOLS
 
@@ -248,6 +249,9 @@ BUILTIN_TOOLS: dict[str, Callable[..., Tool]] = {
     **TRIAGE_TOOLS,
     # The second domain's. Same rule: named at the seam, implemented in their own module.
     **VERIFY_TOOLS,
+    # The mechanism, not a capability. It needs a runner the composition root supplies; without
+    # one it refuses, and says why. Named here so a configuration can ask for it by name.
+    SpawnAgentTool.name: SpawnAgentTool,
 }
 
 

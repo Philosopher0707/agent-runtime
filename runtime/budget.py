@@ -73,6 +73,51 @@ class Budget:
     def remaining_steps(self) -> int:
         return max(0, self.max_steps - self.steps)
 
+    @property
+    def remaining_tokens(self) -> int:
+        return max(0, self.max_tokens_total - self.tokens_total)
+
+    @property
+    def remaining_cost_usd(self) -> float:
+        return max(0.0, self.max_cost_usd - self.cost_usd)
+
+    @property
+    def remaining_wall_clock_s(self) -> float:
+        return max(0.0, self.max_wall_clock_s - self.elapsed_s)
+
+    def allocate(self, share: float) -> Budget:
+        """A child's budget: a share of what is left, and not a penny more.
+
+        **Not** "the child gets the parent's budget". That makes a declared bound multiply —
+        the defect [decisions/0015](../../docs/decisions/0015-cost-budget-must-bind.md) refuses
+        at the configuration level, arriving by the back door. A parent with $1 that hands $1 to
+        each of three children has declared a $1 bound and spent $3.
+
+        The allocation is computed from what remains *now*, so a parent that has already spent
+        cannot allocate what it no longer has. Children run one at a time and each one's spend is
+        charged back, which means a sequence of spawns cannot oversubscribe either — a
+        *reservation* would be needed for concurrent children, and there are none.
+        """
+        if not 0.0 < share <= 1.0:
+            raise ValueError(f"a budget share must be in (0, 1], got {share}")
+        return Budget(
+            max_steps=max(1, int(self.remaining_steps() * share)),
+            max_tokens_total=max(1, int(self.remaining_tokens * share)),
+            max_wall_clock_s=max(0.001, self.remaining_wall_clock_s * share),
+            max_cost_usd=max(0.000001, self.remaining_cost_usd * share),
+            clock=self.clock,
+        )
+
+    def charge(self, child: Budget) -> None:
+        """Add a child's spend to this budget's own.
+
+        The child's *usage*, not its limit. Charging the limit would make a spawn cost the
+        parent its whole allocation whether or not the child used it, which would make
+        spawning expensive in a way nobody declared.
+        """
+        self.tokens_total += child.tokens_total
+        self.cost_usd += child.cost_usd
+
     def check(self, *, include_steps: bool = True) -> None:
         """Raise if a bound is reached.
 

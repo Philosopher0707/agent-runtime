@@ -1573,3 +1573,105 @@ It did not. The claim — a response time the draft never states — came back `
 *Lesson: this is the second domain's version of the triage injection case, and it is the harder
 question. There, compliance was visible as a missing tool call. Here it is one word in a structured
 field, and the difference between obeying and not obeying is invisible except in the verdict.*
+
+### 2026-09-28 — The first new mechanism, and the first defect it found
+
+**L107. The registry was right and I was wrong, and it caught me before I shipped it.**
+
+`spawn_agent` starts a run. Nothing in the world changes; a retry runs a second child. So I
+declared it `side_effect=False, idempotent=False` — and the registry refused:
+
+> *"a tool with no side effect is idempotent by definition"*
+
+My instinct was that the two properties are independent, and that the registry's rule conflated
+them. **The registry is right, and for a reason worth keeping.** Delegating spends the caller's
+budget on a task the caller did not specify. That is an action on their behalf, and the project's
+stance is that the principal decides. The budget bounds the damage; the gate is what makes it
+their choice.
+
+Two gates, and both are needed: this one authorises *delegating*, the child's own authorises
+*acting*.
+
+*Lesson: an invariant I was about to declare an exception to turned out to be describing the case
+correctly. The refusal was not an obstacle — it was the design telling me which of two things I
+had actually built.*
+
+**L108. A tool can need a runtime facility, and the core can supply it without naming the tool.**
+
+A tool cannot start a run — `runtime/` is where runs start, and a tool importing the loop inverts
+the layering. So the composition root supplies a `SpawnRunner` callable. But `run_task` naming
+`spawn_agent` would be the leak decisions/0027 had just closed.
+
+The answer: **a tool declares what it needs by *parameter* name**, and the catalogue passes any
+facility a factory asks for.
+
+```python
+needs: ClassVar[frozenset[str]] = frozenset({"runner"})
+```
+
+The catalogue sees "this factory wants a `runner`". It never sees `spawn_agent`. The delete test
+keeps passing, and a future tool with a runtime need uses the same mechanism without touching the
+core or the seam.
+
+*Lesson: the way to give the core a capability without the core knowing the caller is to make the
+request generic. "I need a runner" is a shape; "I am spawn_agent" is a name.*
+
+**L109. And all four of 0028's answers were verified live, not asserted.**
+
+```
+PARENT   status=ok  cost=$0.0174  tools=[list_sources, spawn_agent, spawn_agent]
+  ├─ bd77325731674139  status=ok  steps=4  cost=$0.0052
+  └─ b8032b9671b747a5  status=ok  steps=3  cost=$0.0049
+```
+
+Budget, trace, confirmation and failure — each one observable. The parent even wrote
+*self-contained* tasks for its children, because the tool's description says the child cannot see
+the conversation.
+
+*Lesson: a decision that answers four questions is worth little until something exercises all
+four. Writing the answers down made the implementation mechanical; running it made them true.*
+
+**L110. The mechanism's own defect: replay understates a spawned run's cost.**
+
+Testing the trace-composition claim rather than asserting it:
+
+```
+replay reproduces identically: False
+replayed cost: $0.0073    recorded cost: $0.0174
+```
+
+`$0.0073` is the parent's own spend. On replay the spawn is served from the parent's recorded
+outcome — the children are not re-run, which is *correct* — so `Budget.allocate` is never called
+and `Budget.charge` never runs. **The cost is reconstructed from a path that only executes when a
+child actually runs.**
+
+This is the third instance of the pattern: **a path that only executes for real was never
+exercised by replay.** The repair pass was the first, summarisation the second.
+
+*Lesson: every new mechanism needs its own replay test, and the test has to be run rather than
+reasoned about. I had written "replay composes recursively" into the decision before checking that
+it composed to the same numbers.*
+
+**L111. And the facility was wired in one entry point and not the others.**
+
+The first live sweep came back `degraded`: *"spawn_agent was configured but no runner was wired
+in."* `run_task` built the runner; the live harness, the golden harness and the test helper each
+build their own registry and did not.
+
+**Same shape as the `write_note` leak** — composition duplicated across call sites, drifting.
+Fixed by giving it one home (`run_facilities`) and, more importantly, **a check**: every file that
+calls `run()` must pass facilities to `build_tools()`.
+
+*Lesson: a facility is composition, and composition happens at every entry point. One home plus a
+check is the only version that stays true — the second call site is where it breaks, and it breaks
+silently.*
+
+**L112. And the check's first version was wrong twice, in two different ways.**
+
+It flagged six sites that build a registry to *inspect* it — counting tools, checking a config
+loads — where facilities are meaningless. Then, scoped to files that run a task, it flagged
+`service/app.py` for `uvicorn.run(...)`: a *bare name* is `runtime.loop.run`, an attribute is not.
+
+*Lesson: the same as every other tripwire here. Scoped too wide it is noise that teaches people to
+silence it; scoped wrong it fires on a web server. Both were visible in one run because the check
+printed what it found rather than just failing.*
