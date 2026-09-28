@@ -400,3 +400,62 @@ def test_the_literal_reader_ignores_prose() -> None:
     """
     source = '"""A docstring mentioning write_note."""\nX = "write_note"\n# a comment: write_note\n'
     assert string_literals_in_code(source) == ["write_note"]
+
+
+# ------------------------------- the "delete the capability" test, made checkable
+
+
+#: What `runtime/` may import from `tools/`. These three are the *seam*: resolving a name to a
+#: factory, enforcing what a tool must be, and listing what exists. Everything else under
+#: `tools/` is a capability — or a test double — and the core must not know it exists.
+TOOL_SEAM = frozenset({"tools.catalogue", "tools.registry", "tools.builtin"})
+
+
+def core_tool_imports() -> list[tuple[str, str]]:
+    """Every `tools.*` module the core imports, by file."""
+    found: list[tuple[str, str]] = []
+    for path in sorted((REPO_ROOT / "runtime").glob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            module = None
+            if isinstance(node, ast.ImportFrom):
+                module = node.module
+            elif isinstance(node, ast.Import):
+                module = next((a.name for a in node.names if a.name.startswith("tools")), None)
+            if module and module.split(".")[0] == "tools":
+                found.append((path.name, module))
+    return found
+
+
+def test_the_core_imports_no_capability() -> None:
+    """The "delete the capability" test, enforced.
+
+    The test the project has been applying by hand: *can the capability be deleted and the
+    runtime still work?* It is the invariant that keeps a growing project from turning its
+    runtime into a framework for one kind of agent — and it is the thing most likely to break
+    quietly, because adding a capability is exactly when the core is most tempted to learn about
+    one.
+
+    Measured, not asserted: adding the triage domain touched eighteen new files and one line in
+    the documented seam. This makes the measurement a tripwire.
+
+    Note what it does *not* forbid. `tools/builtin.py` imports `tools/triage` — the capability is
+    named at the seam, which is where a capability is supposed to be named. What it forbids is
+    the *core* reaching past the seam into a capability's module.
+    """
+    offenders = [
+        f"{where} imports {module}"
+        for where, module in core_tool_imports()
+        if module not in TOOL_SEAM
+    ]
+    assert not offenders, (
+        f"{offenders}. The core may import the seam ({sorted(TOOL_SEAM)}) and nothing else "
+        f"under tools/. If the core needs a capability, the capability belongs in the seam or "
+        f"the need belongs in a configuration."
+    )
+
+
+def test_the_seam_check_is_not_vacuous() -> None:
+    """It must be reading real imports, and the seam must be the whole of what it allows."""
+    imports = core_tool_imports()
+    assert imports, "the check found no tools imports at all — it is reading nothing"
+    assert {module for _, module in imports} <= TOOL_SEAM, "the core already imports past the seam"
