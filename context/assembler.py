@@ -111,12 +111,19 @@ class ContextAssembler:
     def add_assistant(
         self, text: str | None, *, tool_calls: Sequence[ToolCallRequest] = ()
     ) -> None:
-        """Record the model's turn, with any tool calls rendered in-band as text."""
+        """Record the model's turn, with any tool calls rendered in-band as text.
+
+        The rendered calls are bounded by ``context.max_call_chars``. A tool result is bounded
+        by the untrusted envelope; the *request* was bounded by nothing, so a turn with many
+        large arguments could add tens of thousands of tokens that only the hard ceiling could
+        remove — and removing it took the request away from its own results.
+        """
         parts: list[str] = []
         if text:
             parts.append(text)
-        for call in tool_calls:
-            parts.append(render_tool_call(call.name, call.arguments))
+        rendered = "\n".join(render_tool_call(call.name, call.arguments) for call in tool_calls)
+        if rendered:
+            parts.append(_bound(rendered, self._config.max_call_chars, "tool call arguments"))
         self._turns.append(Turn(role=MessageRole.ASSISTANT, content="\n".join(parts)))
 
     def add_tool_result(self, *, name: str, envelope: str) -> None:
@@ -248,6 +255,18 @@ def _first_unsummarised_tool(turns: list[Turn]) -> int | None:
 def _roles_present(messages: list[dict[str, Any]]) -> bool:
     roles = [message["role"] for message in messages]
     return roles[:2] == [str(MessageRole.SYSTEM), str(MessageRole.USER)]
+
+
+def _bound(text: str, max_chars: int, what: str) -> str:
+    """Truncate, saying what was dropped — the same convention as the untrusted envelope.
+
+    A silent cut is the one outcome this design keeps refusing to have: the model has to be
+    able to tell that something is missing, or it will treat a partial record as the whole one.
+    """
+    if len(text) <= max_chars:
+        return text
+    omitted = len(text) - max_chars
+    return f"{text[:max_chars]}\n[... {omitted} characters of {what} omitted by the runtime ...]"
 
 
 def render_tool_call(name: str, arguments: dict[str, Any]) -> str:

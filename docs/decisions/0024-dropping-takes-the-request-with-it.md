@@ -78,6 +78,11 @@ bounded the way its result is, without changing what the tool receives. Recorded
 symptom (an incoherent transcript) and the cause (an unbounded request) are different things, and
 fixing the symptom is what this decision does.
 
+**Closed the same day, by [decisions/0025](0025-tool-call-arguments-are-bounded.md).** The gap
+lasted one commit, which is the intended shape of "fix the symptom, name the cause, then fix the
+cause" — and it is worth noting that the cause was only *findable* because the symptom had been
+made honest first. A transcript that lies about what happened hides the reason it is lying.
+
 ## Alternatives considered
 
 **Drop single turns, as before.** Rejected: it is the bug.

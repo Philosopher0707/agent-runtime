@@ -173,10 +173,12 @@ of half-finished verticals.
   (dropping took requests away from their results, and the fix keeps the most recent group and
   refuses when even that cannot fit).
 
-  **What is still open from this work:** tool-call *arguments* are unbounded in the transcript
-  and nothing summarises the assistant turn, so one step can add ~65,000 tokens that only the
-  hard ceiling can remove. That is the real fix for the incoherence 0024 treated the symptom of,
-  and it is recorded there rather than done.
+  **What is still open from this work:** nothing structural. Tool-call *arguments* were the
+  cause behind 0024's symptom and are now bounded
+  ([decisions/0025](decisions/0025-tool-call-arguments-are-bounded.md)), so a single step can no
+  longer force the ceiling. What has **not** met real content is the ceiling doing its job on
+  genuinely large input — every firing so far has come from a scripted stub, because no real
+  configuration has yet produced a prompt that large.
 - **Concurrency.** The service handles one run at a time. The trace writer assumes one
   writer per file, which holds until it does not.
 - **Streaming.** Not needed for a request/response runtime; needed the moment there is a UI.

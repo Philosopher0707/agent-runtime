@@ -98,6 +98,19 @@ class ContextConfig(Contract):
     schema_chars_per_token: float = Field(default=2.0, gt=0.0)
     summarise_above_tokens: int = Field(default=600, ge=0)
     summary_chars: int = Field(default=200, gt=0)
+    #: The most characters of rendered tool calls one assistant turn may contribute.
+    #:
+    #: A tool *result* is bounded by ``guardrails.untrusted_max_chars``. Nothing bounded what
+    #: the model *asked for*: the assistant turn carries every call's arguments in full, so
+    #: sixteen calls with 8,000-character arguments added ~65,000 tokens in a single step —
+    #: which summarisation cannot touch, because it only rewrites tool results, and which the
+    #: hard ceiling could only answer by dropping the whole request. See
+    #: docs/decisions/0025.
+    #:
+    #: The bound applies to the turn's calls **together**, not to each call, because the thing
+    #: that must not happen is one turn dominating the prompt — and sixteen bounded calls still
+    #: add up.
+    max_call_chars: int = Field(default=4_000, gt=0)
 
 
 class OutputConfig(Contract):
