@@ -246,7 +246,7 @@ def run_case(case: dict[str, Any]) -> LiveResult:
     registry = build_tools(
         config,
         extra=extra,
-        notes_root=notes_root,
+        overrides={"write_note": {"root": notes_root}},
         sleep=lambda _seconds: None,
         jitter=lambda _low, _high: 0.0,
     )

@@ -23,11 +23,10 @@ from evals.judge import DETERMINISTIC_SCORER
 from providers.base import Provider
 from providers.stub import StubProvider
 from runtime.config import Configuration, apply_overrides, load_config_by_name
-from runtime.factory import build_provider
+from runtime.factory import build_provider, build_tools
 from runtime.loop import run
 from runtime.schemas import RunOutput, ToolCallRecord, TraceRecord
 from runtime.trace import TraceWriter, new_trace_id, read_trace
-from tools.catalogue import build_registry
 from tools.registry import Tool
 from tools.scripted import ScriptedTool
 
@@ -77,10 +76,12 @@ def run_case(
     )
 
     extra_tools = _scripted_tools(case.get("tools") or {})
-    registry = build_registry(
-        [*config.tools, *(tool.name for tool in extra_tools)],
+    registry = build_tools(
+        config,
         extra=extra_tools,
-        tool_kwargs={"write_note": {"root": notes_root}},
+        # The case's own notes directory, applied *over* what the configuration declares — so
+        # the golden set exercises the same wiring a run does.
+        overrides={"write_note": {"root": notes_root}},
         # Retries must not actually sleep in the harness, or the golden set is slow.
         sleep=lambda _seconds: None,
         jitter=lambda _low, _high: 0.0,

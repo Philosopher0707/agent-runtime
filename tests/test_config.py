@@ -280,3 +280,66 @@ def test_the_stub_provider_honours_the_configured_prices() -> None:
     config = validate_config({**MINIMAL, "provider": {"kind": "stub", "price_input_per_mtok": 5.0}})
     provider = build_provider(config.provider)
     assert provider._price_in == 5.0
+
+
+# --------------------------------------- a configuration declares its tools' arguments
+
+
+def test_tool_options_reach_the_tool(tmp_path) -> None:
+    """A capability configures its own tools; the core names none of them.
+
+    Before decisions/0027 the composition root passed `{"write_note": {"root": ...}}` itself, so
+    only a tool that happened to be called `write_note` could ever receive an argument — and the
+    triage tools worked only because their default directory happened to be right.
+    """
+    import json
+
+    from tools.triage import ListMessagesArgs, ListMessagesTool
+
+    (tmp_path / "042.json").write_text(json.dumps({"subject": "declared"}), encoding="utf-8")
+    config = validate_config(
+        {
+            **MINIMAL,
+            "tools": ["list_messages"],
+            "tool_options": {"list_messages": {"root": str(tmp_path)}},
+        }
+    )
+    registry = build_tools(config)
+    try:
+        tool = registry.get("list_messages")
+        assert isinstance(tool, ListMessagesTool)
+        assert "042" in tool.invoke(ListMessagesArgs()), "the configuration's option was ignored"
+    finally:
+        registry.close()
+
+
+def test_a_caller_may_override_what_the_configuration_declares(tmp_path) -> None:
+    """A CLI flag or a per-case temporary directory still works — it just does not live in the
+    core. The override wins over the declared value."""
+    import json
+
+    from tools.triage import ListMessagesArgs, ListMessagesTool
+
+    declared, redirected = tmp_path / "declared", tmp_path / "redirected"
+    for directory, message_id in ((declared, "001"), (redirected, "999")):
+        directory.mkdir()
+        (directory / f"{message_id}.json").write_text(
+            json.dumps({"subject": message_id}), encoding="utf-8"
+        )
+
+    config = validate_config(
+        {
+            **MINIMAL,
+            "tools": ["list_messages"],
+            "tool_options": {"list_messages": {"root": str(declared)}},
+        }
+    )
+    registry = build_tools(config, overrides={"list_messages": {"root": str(redirected)}})
+    try:
+        tool = registry.get("list_messages")
+        assert isinstance(tool, ListMessagesTool)
+        listed = tool.invoke(ListMessagesArgs())
+        assert "999" in listed, "the override did not win"
+        assert "001" not in listed
+    finally:
+        registry.close()

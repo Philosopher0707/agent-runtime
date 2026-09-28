@@ -11,6 +11,7 @@ own format is enforced rather than remembered.
 
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 
@@ -310,6 +311,39 @@ def test_the_tool_name_check_is_not_vacuous() -> None:
 STRING_LITERAL = re.compile(r"[\"']([a-z][a-z_0-9]+)[\"']")
 
 
+def string_literals_in_code(source: str) -> list[str]:
+    """Every string literal in **code**, excluding docstrings.
+
+    AST rather than text, for the reason the tripwire catalogue gives first: *AST over text,
+    always*. A text search reads the prose that **describes** the problem — and the first
+    version of this check flagged `config.py` and `factory.py` for naming `write_note` in the
+    docstrings that explain why they no longer name it in code.
+
+    Comments are not in the AST at all, so they are excluded for free.
+    """
+    tree = ast.parse(source)
+    docstrings: set[int] = set()
+    holders = (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+    for node in ast.walk(tree):
+        body = getattr(node, "body", [])
+        if not isinstance(node, holders) or not body:
+            continue
+        first = body[0]
+        if (
+            isinstance(first, ast.Expr)
+            and isinstance(first.value, ast.Constant)
+            and isinstance(first.value.value, str)
+        ):
+            docstrings.add(id(first.value))
+    return [
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and id(node) not in docstrings
+    ]
+
+
 def domain_tool_names() -> set[str]:
     """Every registered tool that is not a control tool.
 
@@ -323,28 +357,46 @@ def domain_tool_names() -> set[str]:
     return set(available_tool_names()) - set(CONTROL_TOOL_NAMES)
 
 
-def test_the_loop_names_no_capability() -> None:
+def test_the_core_names_no_capability() -> None:
     """The one rule, enforced rather than asserted.
 
     "The core loop contains no domain logic" is the claim every other decision rests on — it is
     why adding a capability is a configuration rather than a branch. It was **true and measured**
     (adding the first real domain touched one line, in the documented seam) and it was **not
-    enforced**: a tool name leaking into the loop would have passed CI.
+    enforced**: a tool name leaking into the core would have passed CI.
 
-    Scoped to the loop, which is where the rule is stated and where it is sharp. `factory.py`
-    names concrete implementations on purpose — it is the composition root, and that is the one
-    place naming them is its job.
+    This check covered only `runtime/loop.py` when it was written, because `runtime/factory.py`
+    named `write_note` to pass it a constructor argument — the one place the core knew a tool.
+    That is fixed ([decisions/0027](../../docs/decisions/0027-tool-options-are-configuration.md)),
+    so the check now covers the whole core, which is what the rule actually says.
+
+    Control tools are excluded on purpose: intercepting `ask_clarification` *is* the loop's job,
+    which is why the rule says "exactly one tool name".
     """
-    source = (REPO_ROOT / "runtime" / "loop.py").read_text(encoding="utf-8")
-    leaked = sorted(name for name in domain_tool_names() if name in STRING_LITERAL.findall(source))
-    assert not leaked, (
-        f"runtime/loop.py names {leaked}. A capability the loop names is a capability the loop "
-        f"has an opinion about — it belongs in a configuration, a tool, or the model adapter."
+    offenders: list[str] = []
+    for path in sorted((REPO_ROOT / "runtime").glob("*.py")):
+        literals = set(string_literals_in_code(path.read_text(encoding="utf-8")))
+        for name in sorted(domain_tool_names() & literals):
+            offenders.append(f"{path.name} names {name!r}")
+    assert not offenders, (
+        f"{offenders}. A capability the core names is a capability the core has an opinion "
+        f"about — it belongs in a configuration, a tool, or the model adapter."
     )
 
 
 def test_that_check_is_not_vacuous() -> None:
-    """It must be looking for something real."""
+    """It must be looking for something real, across real files."""
     assert len(domain_tool_names()) >= 4, "no domain tools registered — nothing to leak"
-    source = (REPO_ROOT / "runtime" / "loop.py").read_text(encoding="utf-8")
-    assert STRING_LITERAL.findall(source), "the literal pattern finds nothing in the loop"
+    core = sorted((REPO_ROOT / "runtime").glob("*.py"))
+    assert len(core) >= 5, "the check is reading almost no files"
+    assert any(string_literals_in_code(p.read_text(encoding="utf-8")) for p in core)
+
+
+def test_the_literal_reader_ignores_prose() -> None:
+    """A docstring that names a tool is not the core naming a tool.
+
+    The first version of this check was text-based and flagged exactly that, which is the
+    mistake the tripwire catalogue warns about in its first rule.
+    """
+    source = '"""A docstring mentioning write_note."""\nX = "write_note"\n# a comment: write_note\n'
+    assert string_literals_in_code(source) == ["write_note"]

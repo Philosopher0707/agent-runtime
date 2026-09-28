@@ -168,6 +168,15 @@ class Configuration(Contract):
     description: str = ""
     system_prompt: str
     tools: list[str] = Field(default_factory=list)
+    #: Constructor arguments for the tools this configuration names, keyed by tool name.
+    #:
+    #: Here rather than in the core, because *which* tool needs *what* is a property of the
+    #: capability. The composition root used to pass ``{"write_note": {"root": ...}}`` itself,
+    #: which meant only a tool that happened to be called `write_note` could ever receive an
+    #: argument — and the triage tools worked only because their default directory happened to
+    #: be right. A caller may still override one (a CLI flag, a per-case temporary directory);
+    #: what it may not do is make the *core* know a tool's name.
+    tool_options: dict[str, dict[str, Any]] = Field(default_factory=dict)
     provider: ProviderConfig = Field(default_factory=ProviderConfig)
     #: No default. Every configuration states its bounds.
     budget: BudgetConfig

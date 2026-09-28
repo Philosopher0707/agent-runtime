@@ -38,6 +38,17 @@ tools:
   - read_message
   - escalate
 
+tool_options:
+  # All three triage tools read the same directory. Declared rather than defaulted: before
+  # docs/decisions/0027 the core hard-coded one tool's argument, so a capability could not
+  # configure its own tools at all and this worked only because the default happened to be right.
+  list_messages:
+    root: messages
+  read_message:
+    root: messages
+  escalate:
+    root: messages
+
 provider:
   # A real capability points at a real provider. The *tests* downgrade to the stub when they
   # need determinism — the other way round would make the capability a demo.

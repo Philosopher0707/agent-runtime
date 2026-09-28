@@ -70,7 +70,7 @@ def create_app(
                 os.environ.get("AGENT_CONFIG", "default"), root=config_root
             )
             reachable = build_provider(config.provider).health()
-            registry = build_tools(config, notes_root=notes_root)
+            registry = build_tools(config, overrides={"write_note": {"root": notes_root}})
             try:
                 tools_loaded = len(registry)
             finally:
@@ -91,7 +91,7 @@ def create_app(
             request,
             config_root=config_root,
             trace_dir=trace_dir,
-            notes_root=notes_root,
+            tool_overrides={"write_note": {"root": notes_root}},
             clock=clock,
         )
 
