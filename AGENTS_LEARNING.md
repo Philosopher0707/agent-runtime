@@ -1190,3 +1190,37 @@ So if someone refactored the summarisation path away, the case would keep passin
 something much weaker. Named rather than fixed, because it is the exact failure this project keeps
 finding — a test that has quietly stopped testing its subject — and because the fix (a
 context-shape assertion kind) is a change to the case schema, not to this case.
+
+**L81. The same question — "can this bound actually bind?" — found an unbounded path in the loop.**
+
+The project had asked it once already, of a *configuration*: decision 0015 refuses a cost bound
+that can never fire. Applied to the **loop**, the question is "is any declared bound unable to
+bind?", and the answer was worse than a dead bound.
+
+`max_steps` bounds steps. **Nothing bounded the calls inside one.** A single model response may
+carry any number of tool calls, and the loop dispatched every one before consulting a budget:
+
+```python
+for call in response.tool_calls:  # no bound
+    record = self.tools.dispatch(...)  # no budget consulted
+```
+
+Measured rather than reasoned: 40 calls in one step dispatched all 40, with `max_steps: 6` and a
+budget affording two model calls. The clock is read at step boundaries and never inside the
+dispatch loop — so **nothing inside a step is interruptible**, and 40 calls at a 5-second timeout
+is over three minutes against a `max_wall_clock_s` of 120.
+
+The spec says **no unbounded path may exist**. It did.
+
+**And the obvious fix was the wrong one.** Checking the budget before each dispatch would make the
+*number of dispatches* depend on the clock — and `runtime/replay.py` already says a
+wall-clock-bounded run only replays under a deterministic clock. That fix would have widened a
+narrow, documented limitation into one affecting every run that dispatches many calls. **A count
+cap is deterministic; a clock check is not.** `MAX_TOOL_CALLS_PER_STEP = 16`, a constant like
+`MAX_ATTEMPTS`, recorded as the existing `budget_exhausted` row rather than a new taxonomy entry,
+and the model is told in-band.
+
+*Lesson: "can this bound actually bind?" is worth asking of every bound, not just the
+configuration ones — and when the fix has a choice of *what to measure*, prefer the one that
+cannot vary between a run and its replay. Correctness of the record outranks tightness of the
+bound.*
