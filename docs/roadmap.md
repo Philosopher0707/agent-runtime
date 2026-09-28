@@ -17,17 +17,38 @@ it — it carried a count that was already wrong, was "refreshed" to a second wr
 had to be rolled back. The rollback restored the first wrong number, because rollback
 restores a revision, not correctness.
 
-**It has now met real data, once.** A real endpoint has run a plain answer and a native tool
-call, and a real trace replayed exactly — the strongest invariant in the project, demonstrated
-rather than reasoned. It found two defects within four API calls (the token estimate omitted
-the tool schemas and used the prose ratio for JSON; the two context thresholds measured the
-same quantity when they should measure different ones), both fixed with the numbers in
-[decisions/0005](decisions/0005-token-estimation.md).
+**Phase 1 is done, and Phase 2's first domain is done.** It has met real data three times, and
+each meeting found something the tests could not:
 
-What has **not** met real data is nearly everything else: the 33 eval cases are still
-stub-driven, the marker corpus is hand-built, and one provider on one day is not a range of
-providers. The distinction matters — "it works against a real model" is now a fact, and it is
-a much narrower fact than it sounds.
+1. **A real endpoint, four API calls.** Two defects in the token accounting — the estimate
+   omitted the tool schemas and used the prose ratio for JSON; the two context thresholds
+   measured the same quantity when they should measure different ones. Both fixed with the
+   numbers in [decisions/0005](decisions/0005-token-estimation.md).
+2. **A live property suite** against a real model, ten cases, opt-in and not in CI. It found
+   that `refused` is vendor-signalled: a model that declines *in words* without setting the
+   flag is recorded as `ok` ([decisions/0019](decisions/0019-refusal-is-vendor-signalled.md)).
+3. **A real domain** — triage, in `configs/triage.yaml`. It found two prompt gaps, falsified an
+   assumption about what the domain meant, and broke a runtime branch that every test had been
+   passing over: **every run that used the structured-output repair pass was unreplayable**
+   ([decisions/0021](decisions/0021-order-independent-serialisation.md)).
+
+The third is the argument for Phase 2. The repair pass runs only when a model is *almost* right,
+and a stub never takes that branch — **a stub is a specification of a model, and a specification
+does not make mistakes.** Coverage would not have shown it.
+
+What has **still** not met real data, and this list is the honest half:
+
+- **The 33 golden-set cases are stub-driven.** They test the runtime's contract, which is what
+  they are for, but they say nothing about a real model's behaviour on those tasks.
+- **The marker corpus is hand-built.** Roughly a hundred real tool results now exist in
+  `.traces/`, all from five tools in one domain — not the few hundred, and not the variety, that
+  step 3's trigger asks for.
+- **One provider on one day is not a range of providers.** The vendor's actual behaviour remains
+  the one thing the mock transport cannot cover.
+- **Context at real sizes**, concurrency, and streaming are all Phase 3 and all untouched.
+
+The distinction matters. "It works against a real model" is a fact, and a much narrower fact
+than it sounds.
 
 ## Phase 1 — prove the foundation against reality
 
