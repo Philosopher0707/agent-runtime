@@ -229,6 +229,17 @@ what remains is not a task:
 | A second provider adapter | The trigger fired: the first has run against a live endpoint |
 | A second domain | The one untested claim — **"any capability is a configuration" has been tested exactly once** |
 
+**Except one, found by asking whether the architecture is additive** (and it is — adding the first
+domain touched one line, in the documented seam):
+
+| what | why it matters |
+|---|---|
+| **The core hard-codes one tool's constructor argument** | `runtime/factory.py` passes `tool_kwargs={"write_note": {"root": notes_root}}`, so **only a tool that happens to be called `write_note` can receive one.** The triage tools work because their default (`Path("messages")`) is right, not because a configuration chose it. Latent: nothing is broken, and nothing is configurable. The fix is a config surface for tool options, which is a schema change rather than a patch. |
+
+That one is recorded rather than fixed because it is latent and the fix is a schema change —
+and because finding it took a question nobody had asked. It is the first item on this roadmap in
+a while that is a task.
+
 So the next step is a product decision rather than an engineering one:
 
 - **Stay a reference implementation.** The runtime is complete, honest about its limits, and
