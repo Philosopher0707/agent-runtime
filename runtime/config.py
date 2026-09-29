@@ -20,6 +20,7 @@ from pydantic import AliasChoices, Field, field_validator, model_validator
 
 from runtime.redact import DEFAULT_PATTERNS, PATTERN_NAMES
 from runtime.schemas import Contract
+from runtime.structured import SUPPORTED_KEYWORDS, unsupported_keywords
 
 #: Repository-root-relative default for the worked-example configs.
 DEFAULT_CONFIG_DIR = Path("configs")
@@ -207,6 +208,39 @@ class Configuration(Contract):
             f"trip. Set provider.price_input_per_mtok and provider.price_output_per_mtok to "
             f"the endpoint's real rates — the bound is only as real as those two numbers."
         )
+
+    @model_validator(mode="after")
+    def _a_declared_schema_must_be_enforceable(self) -> Configuration:
+        """Refuse a configuration whose output schema the validator cannot enforce.
+
+        ``runtime/structured.py`` implements a documented subset — ``type``, ``required``,
+        ``properties``, ``items``, ``enum``, ``additionalProperties`` — and *ignores* everything
+        else. Ignoring is a reasonable thing for a subset validator to do; ignoring **silently**
+        while the configuration believes the answer is checked is not. A schema using ``$ref`` or
+        ``allOf`` reads as a contract and is not one.
+
+        This is the same defect [decisions/0015](../../docs/decisions/0015-cost-budget-must-bind.md)
+        refuses for a cost bound that can never fire: a declaration that cannot do what it says, and
+        that reports success anyway. The subset's own constant was documented and never used — it is
+        load-bearing now.
+
+        Refused at load rather than warned about, because a warning on a configuration is read once
+        and a refusal is read every time. Adding a keyword is a decision, and
+        [0008](../../docs/decisions/0008-structured-output-subset.md) names the trigger for the
+        upgrade path: the first schema that genuinely needs ``$ref``.
+        """
+        if self.output.schema_ is None:
+            return self
+        unsupported = unsupported_keywords(self.output.schema_)
+        if unsupported:
+            raise ValueError(
+                f"output.schema uses {unsupported}, which the structured-output validator does not "
+                f"enforce. It covers {sorted(SUPPORTED_KEYWORDS)} and ignores the rest, so this "
+                f"schema would be a promise about the answer that the runtime cannot keep. Either "
+                f"write the schema in the subset, or add the keyword to the validator in the same "
+                f"commit — see decisions/0008."
+            )
+        return self
 
 
 def config_path(name: str, root: str | Path = DEFAULT_CONFIG_DIR) -> Path:

@@ -27,6 +27,48 @@ class StructuredResult:
     error: str | None = None
 
 
+def unsupported_keywords(schema: Any) -> list[str]:
+    """Every keyword in ``schema`` that this validator does not enforce, sorted.
+
+    A schema the validator cannot enforce is a contract the run believes it is keeping and is not,
+    so `runtime/config.py` refuses one at load — the same argument
+    [decisions/0015](../../docs/decisions/0015-cost-budget-must-bind.md) makes about a cost bound
+    that can never fire, applied to a promise instead of a number.
+
+    Three details, and each is a way to make this function useless:
+
+    * **Property names are not keywords.** The keys inside ``properties`` *name* the properties; the
+      values are schemas. A walk that does not know that reports every property name as
+      unsupported — which is what the first version of this did, and it flagged `claim`, `verdict`
+      and `evidence` in a schema that is entirely inside the subset.
+    * **``additionalProperties`` may be a boolean.** JSON Schema allows it and the validator handles
+      it, so a `bool` where a schema is expected is not an error.
+    * **Anything else where a schema is expected is reported as unsupported** rather than walked
+      past: ``items: [{...}, {...}]`` is tuple validation, which is outside the subset and would
+      otherwise be silently ignored.
+    """
+    found: set[str] = set()
+    _collect_keywords(schema, found, names=False)
+    return sorted(found - SUPPORTED_KEYWORDS)
+
+
+def _collect_keywords(schema: Any, found: set[str], *, names: bool) -> None:
+    if isinstance(schema, bool):
+        return
+    if not isinstance(schema, dict):
+        found.add(f"<a schema must be an object, not {type(schema).__name__}>")
+        return
+    for key, value in schema.items():
+        if names:
+            _collect_keywords(value, found, names=False)
+            continue
+        found.add(key)
+        if key == "properties":
+            _collect_keywords(value, found, names=True)
+        elif key in {"items", "additionalProperties"}:
+            _collect_keywords(value, found, names=False)
+
+
 def parse_structured(text: str, schema: dict[str, Any] | None) -> StructuredResult:
     """Parse ``text`` as JSON and, if a schema is given, validate against it."""
     stripped = _strip_fence(text.strip())
@@ -138,4 +180,10 @@ def _strip_fence(text: str) -> str:
     return "\n".join(body).strip()
 
 
-__all__ = ["SUPPORTED_KEYWORDS", "StructuredResult", "parse_structured", "validate"]
+__all__ = [
+    "SUPPORTED_KEYWORDS",
+    "StructuredResult",
+    "parse_structured",
+    "unsupported_keywords",
+    "validate",
+]

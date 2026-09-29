@@ -203,15 +203,20 @@ def test_the_repair_note_does_not_depend_on_key_order() -> None:
 
     A direct test of the fix, so a future edit to `_repair_note` fails here rather than
     somewhere a replay happens to notice.
+
+    The schema is a real one, and it has to be: the two versions are the *same mapping* with the
+    keys inserted in opposite orders. An earlier version used `{"b": {...}, "a": {...}}` — bare
+    keys with no `properties` wrapper — which is not a JSON Schema at all, and which
+    `runtime/config.py` now refuses, correctly: every key would be ignored and the validator would
+    accept any answer.
     """
     from runtime.loop import _repair_note
 
-    forward = make_config(
-        output={"format": "json", "schema": {"b": {"type": "string"}, "a": {"type": "string"}}}
-    )
-    backward = make_config(
-        output={"format": "json", "schema": {"a": {"type": "string"}, "b": {"type": "string"}}}
-    )
+    schema = {"type": "object", "properties": {"a": {"type": "string"}, "b": {"type": "string"}}}
+    forward = make_config(output={"format": "json", "schema": dict(reversed(list(schema.items())))})
+    backward = make_config(output={"format": "json", "schema": dict(schema)})
+
+    assert list(forward.output.schema_) != list(backward.output.schema_), "same order — no test"
     assert _repair_note("something went wrong", forward) == _repair_note(
         "something went wrong", backward
     )
@@ -221,7 +226,9 @@ def test_the_repair_note_still_carries_the_schema() -> None:
     """Order-independent, not schema-free — the model needs to see the shape."""
     from runtime.loop import _repair_note
 
-    config = make_config(output={"format": "json", "schema": {"a": {"type": "string"}}})
+    config = make_config(
+        output={"format": "json", "schema": {"type": "object", "properties": {"a": {}}}}
+    )
     note = _repair_note("e", config)
     assert '"a"' in note
     assert "valid JSON" in note
