@@ -94,3 +94,26 @@ run and reads no key, so demanding it load `.env` demands a call it has no use f
   `make ci`'s recipe did not change.
 - **The page carries no decision.** Where a category's boundary is genuinely arguable, the register
   records where the file sits; the argument belongs here.
+
+## Addendum, 2026-09-29 — the provenance line, and what a rebase merge does to it
+
+The page originally named the revision it was generated at — `_Taken <date>, at <git describe>_` —
+which read as provenance, and was one.
+
+It became a dangling reference the first time a branch carrying it was rebase-merged. A rebase
+rewrites the commit, so the SHA in the file pointed at something that is not in the history; the
+`-dirty` suffix it also carried described a working tree that no longer existed. **Nothing failed**,
+because the guard normalises that line by design — the one field deliberately left unchecked was the
+one that went wrong.
+
+That is not a slip to correct but a **field that cannot be correct under this workflow**: any rebase
+merge invalidates a revision recorded inside a file, so regenerating only resets the clock.
+
+The revision is gone. The date says *when*; `git log REGISTER.md` says which commit touched it, and
+git is the authority on that rather than a copy of it — the same argument this decision makes about
+the counts, applied to provenance.
+
+`test_the_page_records_no_revision` fails if a revision-shaped token appears in the page again.
+Probed by mutating the generator to emit one and regenerating: caught. The pattern requires a token
+carrying **both** a digit and a letter, so it matches `4c70732` and `318656b-dirty`, and does not
+match the date or a hex-looking English word.

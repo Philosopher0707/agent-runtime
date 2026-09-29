@@ -11,7 +11,7 @@ Categories are ordered so a failure is pinpointed by the **first** row that move
 boundary comes first: a broken seam explains every failure below it, and a run of
 failures in one category is one defect, not many.
 
-**29 files · 562 cases.**
+**29 files · 564 cases.**
 
 ## The categories
 
@@ -23,7 +23,7 @@ failures in one category is one defect, not many.
 | 4 | Capabilities | 4 | 67 | The domains built on the runtime. A failure here is a configuration or a tool — the core is untouched, and deleting the capability would leave it green. |
 | 5 | Service and operations | 3 | 35 | The surfaces around a run, and the tools that move a build: HTTP, revisions, rollback. |
 | 6 | Runs and evals | 2 | 49 | Real runs rather than constructed ones: recorded traces replayed in CI, and the live suite's own contract. |
-| 7 | Repo hygiene | 4 | 83 | The guards on the guards — the docs' claims about the code, the gate recipe, and this page. A failure here means something said is no longer true. |
+| 7 | Repo hygiene | 4 | 85 | The guards on the guards — the docs' claims about the code, the gate recipe, and this page. A failure here means something said is no longer true. |
 
 ## 1. Boundary
 
@@ -94,18 +94,24 @@ Real runs rather than constructed ones: recorded traces replayed in CI, and the 
 
 ## 7. Repo hygiene
 
-The guards on the guards — the docs' claims about the code, the gate recipe, and this page. A failure here means something said is no longer true. **4 files, 83 cases.**
+The guards on the guards — the docs' claims about the code, the gate recipe, and this page. A failure here means something said is no longer true. **4 files, 85 cases.**
 
 | # | file | cases | what it pins (cited from the file's docstring) |
 |---|---|---|---|
 | 7.1 | `tests/test_repo_hygiene.py` | 28 | Repo hygiene: the files that instruct future agents must stay usable. |
 | 7.2 | `tests/test_ci_contract.py` | 16 | The CI contract: one definition of the gates, and it is the Makefile's. |
 | 7.3 | `tests/test_env_file.py` | 23 | The `.env` file: parsing, precedence, and the entry points that load it. |
-| 7.4 | `tests/test_register.py` | 16 | The register guard: `REGISTER.md` is a projection of the suite, not a copy of it. |
+| 7.4 | `tests/test_register.py` | 18 | The register guard: `REGISTER.md` is a projection of the suite, not a copy of it. |
 
 ## When this snapshot was taken
 
-_Taken 2026-09-29 22:39 IST, at `318656b-dirty`. Not checked — it says when, not what._
+_Taken 2026-09-29 22:47 IST. Not checked — it says when, not what._
+
+**No revision is recorded here, deliberately.** A SHA written into a file goes stale the
+moment the branch carrying it is rebase-merged: the merge rewrites the commit, and the
+file then points at something nobody can check out. The date says *when*; `git log` says
+which commit touched this file, and git is the authority on that rather than a copy of
+it. `tests/test_register.py` fails if a revision-shaped token appears in this page again.
 
 ## Adding a test file
 

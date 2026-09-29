@@ -209,3 +209,37 @@ def test_the_when_line_is_the_only_thing_normalised() -> None:
     page = page_text()
     assert len(reg.TAKEN.findall(page)) == 1
     assert reg.normalise(page).count("_Taken") == 1
+
+
+# ------------------------------------------------------ provenance that cannot dangle
+
+#: A token that could be a short SHA: 7 to 40 hex characters, containing at least one digit
+#: **and** one letter. Both conditions matter, and both are there to stop the check firing on
+#: prose — a pure number is not a revision, and a hex-looking English word (`acceded`) is not one.
+REVISION_LIKE = re.compile(r"\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b")
+
+
+def test_the_page_records_no_revision() -> None:
+    """The defect this pins was created by a rebase merge, not by a mistake.
+
+    The page used to name the revision it was generated at, and it read as provenance — until the
+    branch carrying it was rebase-merged. A rebase rewrites the commit, so the file then pointed at
+    a SHA that is not in the history: a dangling reference, inside a file whose entire purpose is
+    not lying about what is true.
+
+    The date says *when*. `git log REGISTER.md` says which commit touched it, and git is the
+    authority on that rather than a copy of it.
+    """
+    found = REVISION_LIKE.findall(page_text())
+    assert not found, (
+        f"REGISTER.md names {found}, which look like revisions. A SHA inside a file is stale by "
+        f"construction under a rebase merge — remove it from the generator, not from the page."
+    )
+
+
+def test_the_revision_check_is_not_vacuous() -> None:
+    """It must match a revision and must not match the date, or it is either blind or noisy."""
+    assert REVISION_LIKE.search("_Taken 2026-09-29 22:39 IST, at `4c70732`._")
+    assert REVISION_LIKE.search("at `318656b-dirty`")
+    assert not REVISION_LIKE.search("_Taken 2026-09-29 22:39 IST._")
+    assert not REVISION_LIKE.search("acceded")
