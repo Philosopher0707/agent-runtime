@@ -11,9 +11,9 @@ from __future__ import annotations
 import time
 
 import pytest
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
-from runtime.schemas import Spend, ToolCallRequest, ToolResult
+from runtime.schemas import Spend, ToolCallRequest, ToolDescriptor, ToolResult
 from runtime.status import Guardrail, ToolOutcome
 from tools.registry import (
     Tool,
@@ -488,6 +488,91 @@ def test_a_non_string_result_gets_one_message_with_or_without_a_result_model() -
         record = reg.dispatch(ToolCallRequest(name="non_string"), step=1)
     assert record.outcome is ToolOutcome.MALFORMED
     assert "expected str, got int" in (record.error or "")
+
+
+# ------------------------------------------- the boundary keeps its own promise
+
+#: `dispatch` says it never raises for a tool-level problem. These force the two places it did —
+#: a tool's args model raising something pydantic does not wrap, and the executor refusing the
+#: work — and then pin the line where absorbing stops, so the promise is bounded rather than
+#: aspirational.
+
+
+def test_a_tool_whose_args_model_raises_is_a_record_not_a_crash() -> None:
+    """A `field_validator` raising a `TypeError` escapes pydantic's wrapping. It is the tool's own
+    schema code, so it is the tool's record."""
+
+    class ExplodingArgs(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        value: int = 1
+
+        @field_validator("value")
+        @classmethod
+        def boom(cls, value: int) -> int:
+            raise TypeError("a validator bug")
+
+    class Exploding(Tool):
+        name = "exploding_args"
+        description = "Its args model raises."
+        args_model = ExplodingArgs
+
+        def invoke(self, args: BaseModel) -> str:  # pragma: no cover - never reached
+            return "never"
+
+    with registry(Exploding()) as reg:
+        record = reg.dispatch(
+            ToolCallRequest(name="exploding_args", arguments={"value": 1}), step=1
+        )
+    assert record.outcome is ToolOutcome.NOT_EXECUTED
+    assert "TypeError" in (record.error or "")
+    assert "a validator bug" in (record.error or "")
+
+
+def test_dispatch_after_close_is_a_record_not_a_crash() -> None:
+    """The registry owns the executor, so the pool being gone is a failure for *it* to report rather
+    than for the caller to catch."""
+    reg = registry(FixedTool("ok"))
+    reg.close()
+    record = reg.dispatch(ToolCallRequest(name="fixed"), step=1)
+    assert record.outcome is ToolOutcome.ERROR
+    assert "could not be dispatched" in (record.error or "")
+
+
+def test_a_broken_clock_is_a_composition_error_not_a_tool_record() -> None:
+    """Where absorbing stops, stated as a test rather than left to judgement.
+
+    The clock is injected by the composition root, so a clock that raises is the caller's own broken
+    callable, not the tool's — and the registry cannot file it as a tool record any more than a run
+    can be failed by a clock that does not exist. `runtime/loop.py` absorbs it at its seam, so a run
+    still ends with a status; that is decisions/0034's job, not this boundary's.
+    """
+    reg = ToolRegistry(
+        [FixedTool("ok")],
+        monotonic=lambda: (_ for _ in ()).throw(RuntimeError("the clock broke")),
+    )
+    with pytest.raises(RuntimeError, match="the clock broke"):
+        reg.dispatch(ToolCallRequest(name="fixed"), step=1)
+
+
+def test_a_tool_that_cannot_describe_itself_cannot_be_registered() -> None:
+    """The descriptor is built from the args model and sent on every request, so a tool whose schema
+    cannot be rendered is a run that dies at setup — before anything is recorded, which is the
+    hardest place to attribute a failure. Proving it here puts the defect where a tool author is
+    already looking."""
+
+    class Undescribable(Tool):
+        name = "undescribable"
+        description = "Its descriptor cannot be built."
+        args_model = EmptyArgs
+
+        def invoke(self, args: BaseModel) -> str:  # pragma: no cover - never reached
+            return "ok"
+
+        def describe(self) -> ToolDescriptor:
+            raise RuntimeError("no schema for you")
+
+    with pytest.raises(ToolDefinitionError, match="cannot produce one"):
+        registry(Undescribable())
 
 
 # ------------------------------------------------------------------ descriptors
