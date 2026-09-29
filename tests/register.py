@@ -83,7 +83,6 @@ class Register:
     sections: tuple[Section, ...]
     collected: int
     taken: str
-    revision: str
 
     @property
     def file_count(self) -> int:
@@ -339,13 +338,10 @@ def build() -> Register:
     if empty:
         raise RegisterError(f"these categories have no rows: {empty}")
 
-    from runtime.factory import current_revision
-
     register = Register(
         sections=sections,
         collected=collection.total,
         taken=datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %Z"),
-        revision=current_revision() or "(not a git checkout)",
     )
     if register.total != register.collected:
         raise RegisterError(
@@ -403,8 +399,13 @@ def render(register: Register) -> str:
     lines += [
         "## When this snapshot was taken",
         "",
-        f"_Taken {register.taken}, at `{register.revision}`. "
-        f"Not checked — it says when, not what._",
+        f"_Taken {register.taken}. Not checked — it says when, not what._",
+        "",
+        "**No revision is recorded here, deliberately.** A SHA written into a file goes stale the",
+        "moment the branch carrying it is rebase-merged: the merge rewrites the commit, and the",
+        "file then points at something nobody can check out. The date says *when*; `git log` says",
+        "which commit touched this file, and git is the authority on that rather than a copy of",
+        "it. `tests/test_register.py` fails if a revision-shaped token appears in this page again.",
         "",
         "## Adding a test file",
         "",
