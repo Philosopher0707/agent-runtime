@@ -202,6 +202,78 @@ def test_an_api_key_env_is_trimmed() -> None:
     assert config.provider.api_key_env == "AGENT_API_KEY"
 
 
+def test_a_schema_outside_the_validator_subset_is_refused() -> None:
+    """The same defect as the cost bound above, in a different currency.
+
+    `runtime/structured.py` enforces a documented subset and *ignores* the rest. Ignoring is
+    reasonable for a subset validator; ignoring **silently** while the configuration believes the
+    answer is checked is not. A schema using `$ref` reads as a contract about the output and is not
+    one — so it is refused at load, where the author is looking, rather than discovered by a run
+    that accepted an answer the configuration thought it had forbidden.
+    """
+    with pytest.raises(ConfigError, match=r"does not\s+enforce"):
+        validate_config(
+            {
+                **MINIMAL,
+                "output": {"format": "json", "schema": {"$ref": "#/definitions/missing"}},
+            }
+        )
+
+
+def test_the_schema_refusal_names_the_way_out() -> None:
+    with pytest.raises(ConfigError) as caught:
+        validate_config(
+            {
+                **MINIMAL,
+                "output": {"format": "json", "schema": {"type": "object", "allOf": []}},
+            }
+        )
+    message = str(caught.value)
+    assert "allOf" in message
+    assert "type" in message, "the message must say what *is* enforced, not only what is not"
+    assert "decisions/0008" in message
+
+
+def test_a_schema_inside_the_subset_is_accepted() -> None:
+    """The guard on the guard: the refusal must not fire on the schemas the repo actually ships."""
+    config = validate_config(
+        {
+            **MINIMAL,
+            "output": {
+                "format": "json",
+                "schema": {
+                    "type": "object",
+                    "required": ["findings"],
+                    "additionalProperties": False,
+                    "properties": {
+                        "findings": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {"verdict": {"enum": ["yes", "no"]}},
+                            },
+                        }
+                    },
+                },
+            },
+        }
+    )
+    assert config.output.schema_ is not None
+
+
+def test_property_names_are_not_mistaken_for_keywords() -> None:
+    """The walk has to know that keys inside `properties` are *names*. A version that did not
+    reported `findings` and `verdict` as unsupported keywords, which would have refused every real
+    configuration in this repository."""
+    from runtime.structured import unsupported_keywords
+
+    schema = {
+        "type": "object",
+        "properties": {"allOf": {"type": "string"}, "$ref": {"type": "number"}},
+    }
+    assert unsupported_keywords(schema) == [], "a property *named* allOf is not the allOf keyword"
+
+
 def test_a_cost_budget_that_cannot_trip_is_refused() -> None:
     """Cost is computed from `price_*`, which default to 0.0.
 
