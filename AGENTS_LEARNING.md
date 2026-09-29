@@ -1675,3 +1675,135 @@ loads — where facilities are meaningless. Then, scoped to files that run a tas
 *Lesson: the same as every other tripwire here. Scoped too wide it is noise that teaches people to
 silence it; scoped wrong it fires on a web server. Both were visible in one run because the check
 printed what it found rather than just failing.*
+
+### 2026-09-29 — The spend, the register, and an instrument that lied twice
+
+**L113. The defect 0030 found was fixed by moving *where* the charge happens, not by patching it.**
+
+The charge lived in the code that starts a child. Replay never reaches that code — it serves the
+spawn from the record, which is correct and is the point — so the parent's cost was reconstructed
+from a path that only executes when a child really runs.
+
+The fix is one sentence: **the loop charges the record as it interprets it.** That means the spend
+has to be *in* the record, so `ToolCallRecord` gained one, a tool gained a way to report it, and
+`Budget.charge` stopped taking a child `Budget` and started taking two numbers — because on replay
+there is no child budget to take. The signature change is the defect showing through the API.
+
+Measured, on the same shape of run that produced the `$0.0073`:
+
+```
+recorded  $0.001852 = own $0.000737 + child $0.001115
+replayed  $0.001852   canonical projection identical
+```
+
+*Lesson: a charge belongs where the record is read, not where the spending happens. Any state
+derived from a path that only executes for real is state replay cannot restore — and the way to
+find it is to run the replay and compare numbers, not to reason about the composition.*
+
+**L114. And the guard for it is not "the two numbers agree".**
+
+Two numbers agreeing is also what a replay that recomputed the spend by some other route would
+produce. So `test_the_replayed_cost_comes_from_the_record` forges the recorded spend in a copy of
+the trace, replays again, and requires the replayed cost to move by exactly that amount. That is
+the difference between *"it agrees"* and *"it read it from there"*.
+
+Non-vacuity was checked by simulating the old code — charge in the spawner, not the loop — and
+confirming both new tests fail, reporting the parent's own spend alone.
+
+*Lesson: for a claim of the form "X is restored from Y", the test has to edit Y and watch X move.
+Equality between a recording and a replay is evidence, not proof.*
+
+**L115. A failed delegation is not a free one, and the first version of the fix got that wrong.**
+
+`spawn_agent` raises `ToolError` when a child comes back `partial` — and that child still spent what
+it spent. Charging only the successful path would have understated exactly the runs most worth
+accounting for. So the spend travels on the exception as well as on the result: **both ways an
+attempt can finish can report one.**
+
+The same reasoning made attempts *add*. A call that failed and then succeeded was paid for twice,
+and assignment would have reported one of them silently.
+
+*Lesson: when a number is reported, ask which paths can report it — the error path is the one that
+gets forgotten, and it is the one where the number is least likely to be zero.*
+
+**L116. The register is a projection with a guard, and the guard checks from two directions.**
+
+`REGISTER.md` numbers every test file, groups it by category with **the boundary first**, and cites
+the first line of each file's own docstring rather than paraphrasing it. Numbers come from a real
+collection; descriptions come from the files. `tests/test_register.py` re-derives both.
+
+Two directions, deliberately: the page against its generator, **and** the page against the
+filesystem and a real collection. Either alone is satisfiable by a generator and a page that are
+wrong in the same way — a page rendering a count it invented would match its own generator
+perfectly.
+
+The totality rule is mechanical: every `tests/test_*.py` must appear exactly once, so adding a test
+file without a category fails the suite. That is a decision a reviewer sees rather than a silent
+omission.
+
+*Lesson: "regenerate, do not edit" is only true if something fails when you forget. A page that
+restates a fact is a second copy of it, and the second copy is the one that drifts.*
+
+**L117. The probe harness lied twice, and both lies looked like success.**
+
+It was **blind** first. It invoked pytest with `-q` on top of the `-q` already in `pyproject.toml`,
+so `-qq` suppressed the short summary it was parsing — and every mutation came back `MISSED`, which
+is indistinguishable from a guard that catches everything.
+
+Then it was **contaminated**. A probe creates a stray test file; a killed run left one behind; and
+from then on the same tests failed for an unrelated reason, so the harness reported `CAUGHT` for
+mutations it had not isolated. The self-test showed it: deleting one row failed **six** tests when
+it should fail four.
+
+It now runs a self-test whose expected failure set is asserted *exactly* — not merely "something
+failed" — and cleans its own strays before and after.
+
+*Lesson: an instrument that reports success is the one nobody re-checks. A probe harness needs its
+own probe, and "a failure was seen" is not enough — the failure set has to be the one you predicted,
+or the instrument is crediting itself for the wrong thing.*
+
+**L118. And a guard in this repo had been matching its own source the whole time.**
+
+`test_env_file.py` searched every file for the literal `'__name__ == "__main__"'`, so it matched
+**itself** and counted itself as an entry point. It passed only because the file calls
+`load_env_file()` in its tests — a check passing by accident, for as long as it has existed.
+
+Found because adding `tests/register.py` made the guard demand a `.env` load from a file that
+generates a markdown page. The temptation was to add the call. The honest move was to scope the
+search to files outside `tests/`, which is what the rule always meant, and to say in the docstring
+that the scope changed and why.
+
+*Lesson: when a check fails on something that is obviously not its subject, suspect the check
+before satisfying it. A guard that can be satisfied by doing something meaningless is already
+broken.*
+
+**L119. And the byte budget on `AGENTS.md` did its job.**
+
+Adding one pointer to the register pushed the spec to 8,100 bytes and the hygiene test refused it —
+the same test that exists because the loader silently cuts the tail. The trade was made explicitly:
+the baseline sentence lost a clause, the register gained a line, and the file sits at 7,973.
+
+*Lesson: the budget is only useful if the failure is cheap to fix and impossible to ignore. It was
+both — and the guard fired within a minute of the change that broke it.*
+
+**L120. The log boundary, and a self-test that measured the wrong file.**
+
+The loop's last concrete dependency is gone: `run()` took `tracer: TraceWriter`, so the module that
+runs a task imported the module that records it — the same defect as a loop naming a tool, one layer
+over. `RunLog` now sits beside `ToolBoundary`, and `runtime/loop.py` no longer imports
+`runtime.trace` at all. That absence is the outcome, and a test asserts it *with* a non-vacuity
+partner, because the absence of an import proves nothing unless something still imports it.
+
+Three of the four clauses could not be seen by reading either file — a dropped tool-call record, a
+record written after its result was used, and a log that fails and lets the run continue. The
+fourth, that the log is a *sink*, is what makes a disagreement between a run and its replay a fact
+about the code or the trace rather than about the logger.
+
+And the probe harness lied a third time. Its self-test removed a `run_finished` call and reported
+`BLIND` — because that mutation is caught by `test_trace.py`, which the probe does not run. **The
+guard was fine; the self-test was measuring the wrong file.** It now uses a mutation the boundary
+file must own.
+
+*Lesson: a self-test is only a check on the harness if the mutation it uses is one the harness's own
+subject must catch. "Nothing failed" is ambiguous between a blind harness and a mutation nothing
+covers — and the way to tell is to pick a mutation you can name the expected test for.*

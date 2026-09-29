@@ -6,7 +6,7 @@ SHELL := /bin/bash
 # environment to override.
 UV ?= uv
 
-.PHONY: help install lock-check check lint format test eval live smoke markers ci rollback run clean
+.PHONY: help install lock-check check lint format test eval live smoke markers ci rollback register run clean
 
 help:
 	@echo "install     sync dependencies into .venv (creates uv.lock)"
@@ -18,6 +18,7 @@ help:
 	@echo "smoke       boot the service, POST one run, assert 200 + output schema"
 	@echo "lock-check  fail if uv.lock is out of date with pyproject.toml"
 	@echo "rollback    revert back to REV=<sha> on a branch, through the gates"
+	@echo "register    regenerate REGISTER.md — the suite, numbered and by category"
 	@echo "run         run the CLI against configs/default.yaml"
 
 install:
@@ -69,6 +70,12 @@ smoke:
 
 rollback:
 	$(UV) run python scripts/rollback.py --to $(REV) $(ARGS)
+
+# REGISTER.md is a projection of the suite, so it is regenerated rather than edited. It is not a
+# gate: the gate is tests/test_register.py, which fails when the committed page and the suite
+# disagree — so a stale register fails `make check`, not a sixth step here.
+register:
+	$(UV) run python -m tests.register --write
 
 run:
 	$(UV) run python cli.py --config configs/default.yaml --task "What is 21 * 2?"

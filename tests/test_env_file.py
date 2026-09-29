@@ -164,11 +164,25 @@ def test_a_key_in_a_dotenv_file_reaches_the_provider(
 
 
 def entry_points() -> list[Path]:
-    """Every Python file with a ``__main__`` block, which is every way in."""
+    """Every Python file with a ``__main__`` block, outside the test suite — every way in.
+
+    **`tests/` is excluded, and it is a scope correction rather than a relaxation.** Two files
+    under it matched, and neither is a way into the system:
+
+    * `tests/register.py` generates `REGISTER.md`. It starts no run and reads no key, so
+      demanding it load `.env` would demand a call it has no use for.
+    * **`tests/test_env_file.py` matched itself.** It searches for the literal
+      `'__name__ == "__main__"'`, and that literal is in its own source — so the guard counted
+      its own text as an entry point and passed only because the file calls `load_env_file()`
+      in its tests. A check that matches its own pattern is not checking anything; it was
+      passing by accident.
+
+    The floor below keeps the exclusion from quietly emptying the check.
+    """
     found = []
     for path in sorted(REPO_ROOT.rglob("*.py")):
         parts = set(path.parts)
-        if parts & {".venv", ".pytest-tmp", "__pycache__"}:
+        if parts & {".venv", ".pytest-tmp", "__pycache__", "tests"}:
             continue
         if '__name__ == "__main__"' in path.read_text(encoding="utf-8"):
             found.append(path)
