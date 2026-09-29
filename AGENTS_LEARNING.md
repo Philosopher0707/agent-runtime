@@ -57,6 +57,17 @@ cost to be wrong.
    redacts too much makes a trace useless, and that balance has never been measured against
    real data. *Settle:* run it over a corpus of real traces and count how much useful
    content it removes. The marker work (L10–L14) is the template.
+9. **Three documents say there is no multi-agent orchestration, and the code says otherwise.**
+   `AGENTS.md` ("No multi-agent orchestration in v1"), `docs/roadmap.md` ("Deliberately not on this
+   roadmap: Multi-agent orchestration. One loop, bounded, is the whole point") and
+   `docs/architecture.md` ("What is not here: … No multi-agent orchestration") were all written
+   before `spawn_agent`, `spawn_runner` and `configs/verify_sweep.yaml` existed. A run can now start
+   a run, which is delegation between agents by any ordinary reading — and no check covers a *prose*
+   claim the way the citation checks cover a named test. Found while making room in `AGENTS.md`, not
+   by anything failing. *Settle:* decide which the non-goal meant. If it meant "no orchestration
+   *framework*", reword all three to say that and name the one-level bound. If it meant "no
+   delegation at all", then the mechanism is the defect — and the delete test would not catch it,
+   because `spawn_agent` is a capability and capabilities are allowed.
 
 ## Log
 
@@ -1864,3 +1875,47 @@ direction of reassurance.
 *Lesson: an instrument must be able to say "I do not know". A harness whose only outcomes are CAUGHT
 and MISSED will report MISSED whenever it is broken — and MISSED looks like good news about the
 guard.*
+
+### 2026-09-29 — Offloading the memory into the repository
+
+**L124. The knowledge a reader needs was in a gitignored file, and a *budget* is what made that visible.**
+
+`.workbuddy-ai/memory/MEMORY.md` had grown to 13,642 bytes of rules that anyone working in this
+repository needs — and none of it was in the repository. Gitignoring it was a deliberate call ("agent
+working memory is workspace-local scratch"), and it was right about scratch and wrong about this.
+
+The symptom was a budget: a ~3,000-character write limit per session, on a document whose whole purpose
+is to accumulate. Distilling it — done once, 24% smaller — only resets the clock. **A size cap on a
+document that is supposed to grow guarantees a periodic rewrite of the truth.**
+
+It is now `REFERENCE.md`, tracked; the memory file is a 1,423-byte pointer. **Move, not copy** — and the
+precedence is stated in the pointer ("where the two disagree, `REFERENCE.md` wins") rather than the rules
+being restated, because two copies of a rule drift and the copy that drifts is the one nobody reads.
+
+*Lesson: ask who the document is for. "Scratch" and "the durable rules" are different readers, and the
+same file can be one for one project and the other for another. The tell is not the directory it lives
+in — it is whether someone who clones the repository needs it.*
+
+**L125. And the `AGENTS.md` budget cost a trim for the fourth time, and again not a rule.**
+
+It had 27 bytes of headroom and the pointer needed about 30. The trim was
+`Baseline at initialisation: 0 tests, empty eval set.` — true when the repository was initialised,
+actively misleading now that the suite is 597 cases, and its actionable half ("never quote a count from
+memory") is the half that survived. The root-documents bullet absorbed the new file rather than gaining a
+bullet of its own, and lost the word "Generated", which would now be wrong: `REFERENCE.md` is
+hand-written.
+
+*Lesson: four times now the byte budget has produced a genuine cleanup rather than a sacrifice. That is
+what a budget which fails loudly buys — and the tempting move each time, deleting the check, has never
+been the right one.*
+
+**L126. A new file in the citation-checked set is a stricter promise than it looks, and it passed first try.**
+
+Adding `REFERENCE.md` to `citing_docs()` meant every test name in it had to resolve against the suite.
+It passed immediately, which is luck as much as discipline: the file was written from a memory file whose
+citations had been maintained by hand. The reason to include it is that it cites more tests than any other
+document — nearly every rule in it names the test that pins the rule — so leaving it out would have made
+the new authority the one document whose citations could rot unnoticed.
+
+*Lesson: when a file becomes the authority, ask what is now unchecked about it. A root-level file sits
+outside the `docs/` sweep by default, and that is precisely where a rot would stay invisible.*

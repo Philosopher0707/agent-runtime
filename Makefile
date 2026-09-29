@@ -6,7 +6,7 @@ SHELL := /bin/bash
 # environment to override.
 UV ?= uv
 
-.PHONY: help install lock-check check lint format test eval live smoke markers ci rollback register run clean
+.PHONY: help install lock-check check lint format test eval live smoke markers ci rollback register notes run clean
 
 help:
 	@echo "install     sync dependencies into .venv (creates uv.lock)"
@@ -19,6 +19,7 @@ help:
 	@echo "lock-check  fail if uv.lock is out of date with pyproject.toml"
 	@echo "rollback    revert back to REV=<sha> on a branch, through the gates"
 	@echo "register    regenerate REGISTER.md — the suite, numbered and by category"
+	@echo "notes       regenerate NOTES.md — the docs, with the claim each one leads with"
 	@echo "run         run the CLI against configs/default.yaml"
 
 install:
@@ -76,6 +77,12 @@ rollback:
 # disagree — so a stale register fails `make check`, not a sixth step here.
 register:
 	$(UV) run python -m tests.register --write
+
+# NOTES.md is a projection of the docs tree for the same reason, and is guarded the same way by
+# tests/test_notes.py: a missing document, a quotation that is no longer verbatim, or a page that does
+# not match a fresh render all fail `make check`.
+notes:
+	$(UV) run python scripts/derive_notes.py --write
 
 run:
 	$(UV) run python cli.py --config configs/default.yaml --task "What is 21 * 2?"
