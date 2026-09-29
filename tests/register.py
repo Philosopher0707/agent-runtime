@@ -108,6 +108,7 @@ CATEGORIES: tuple[Category, ...] = (
             "test_config.py",
             "test_trace.py",
             "test_run_log.py",
+            "test_orchestrator_boundary.py",
             "test_trace_schema_doc.py",
             "test_replay.py",
         ),

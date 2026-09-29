@@ -23,6 +23,21 @@ class ProviderError(Exception):
     """
 
 
+class ProviderSignal(Exception):
+    """A provider reporting a fact about the *harness*, not about the model.
+
+    The loop's provider seam absorbs an unexpected exception as ``provider_error`` — that is how an
+    adapter which breaks its contract stops taking the whole run down with it. This is the opposite
+    case, and it needs a type of its own because "not a ``ProviderError``" stopped being enough the
+    moment the seam began catching everything else.
+
+    An implementation raising one of these has not failed: it is *telling the caller something* —
+    that a replay diverged, that a trace was tampered with. Absorbing it would report a defect in
+    the harness as a run that failed, which is a plausible-looking lie. So the loop re-raises these
+    untouched, and `ReplayDivergence` derives from this.
+    """
+
+
 @runtime_checkable
 class Provider(Protocol):
     """What the loop needs from a model. Deliberately three things."""
