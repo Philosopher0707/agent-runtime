@@ -9,16 +9,20 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from providers.base import prompt_hash
+from providers.base import ProviderSignal, prompt_hash
 from runtime.schemas import ModelCallRecord, ModelResponse, ToolDescriptor
 
 
-class ReplayDivergence(Exception):
+class ReplayDivergence(ProviderSignal):
     """A replay did not reproduce the run it came from.
 
     Deliberately not a ``ProviderError``: the loop would turn that into a run
     status, and a divergence must escape the loop rather than be reported as one
-    more way a run can end.
+    more way a run can end. It is a `ProviderSignal` for the same reason stated
+    positively — a signal is re-raised, an error is classified — and it became one
+    when the loop's provider seam started absorbing *unexpected* exceptions:
+    without a base type to recognise, a divergence would have been filed as a run
+    that failed with ``provider_error``.
     """
 
 

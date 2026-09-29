@@ -18,6 +18,21 @@ The division of labour with the tool boundary is deliberate. The registry decide
 **how many times to try** a tool. The loop decides **whether the run can continue**.
 Splitting it that way is what lets a recorded run be replayed exactly instead of
 re-decided.
+
+**The boundary.** This module is the top of the runtime, so what it guarantees is what
+everything above it — the CLI, the service, the eval harness, replay — may rely on:
+
+* **It returns a ``RunOutput`` for anything that goes wrong in the task.** Two things still
+  escape, and both on purpose: a ``RunLog`` that cannot write (there is no record to report a
+  status in), and a process stopping (``KeyboardInterrupt``, ``SystemExit``).
+* **A collaborator that breaks its own contract is absorbed at the seam.** The provider
+  promises ``ProviderError`` and the tool boundary promises never to raise; neither promise is
+  verifiable from here, so both are enforced *here* — the failure is classified with the
+  existing taxonomy and the exception *type* is named in the detail. Absorbing is not hiding.
+* **This module's own bugs are not absorbed.** A defect in the loop should be loud, not filed
+  as a task failure. The seam is where someone else's mistake is caught, and only there.
+* **Nothing is absorbed before ``run_started``.** A boundary that cannot even describe itself
+  is a composition error, and there is no run yet for it to fail.
 """
 
 from __future__ import annotations
@@ -31,7 +46,7 @@ from typing import Any, Protocol, runtime_checkable
 from context.assembler import ContextAssembler, ContextUnfit
 from context.fingerprint import fingerprint
 from context.sanitize import assess, leaks_system_prompt, wrap_untrusted
-from providers.base import Provider, ProviderError, prompt_hash
+from providers.base import Provider, ProviderError, ProviderSignal, prompt_hash
 from runtime.budget import Budget, BudgetExceeded
 from runtime.config import Configuration
 from runtime.redact import Redactor
@@ -316,6 +331,30 @@ class _Orchestrator:
                 step=step,
                 reason="provider_error",
             )
+        except ProviderSignal:
+            # **A signal, not a failure.** An implementation raising this is telling the caller
+            # something about the *harness* — a replay diverged, a trace was tampered with — and
+            # filing it as `provider_error` would report a defect in this project as a run that
+            # failed. `ReplayDivergence` derives from it, and two replay tests caught exactly that
+            # mistake when the catch-all below was written: the divergence came back as
+            # `status=failed`, which is a plausible-looking lie.
+            raise
+        except Exception as exc:
+            # **The seam absorbs a provider that broke its own contract.** `Provider` promises
+            # `ProviderError` and nothing else, and an adapter that leaks a socket error or a parse
+            # bug used to take the whole run down with an exception — the one thing `run()` says it
+            # will not do. From this seat the provider failed, so it is classified as one, and the
+            # exception *type* is named in the detail: absorbing is not hiding.
+            #
+            # `Exception`, not `BaseException`: `KeyboardInterrupt` and `SystemExit` are the process
+            # stopping, not the task failing, and they keep going up.
+            return None, self._stop(
+                FailureClass.PROVIDER_ERROR,
+                RunStatus.FAILED,
+                f"{type(exc).__name__}: {exc}",
+                step=step,
+                reason="provider_error",
+            )
         latency = self.clock() - started
 
         self.state.model_calls += 1
@@ -441,9 +480,28 @@ class _Orchestrator:
                 suppressed += 1
                 continue
 
-            record = self.tools.dispatch(
-                call, step=step, confirmation_token=self.confirmation_token
-            )
+            try:
+                record = self.tools.dispatch(
+                    call, step=step, confirmation_token=self.confirmation_token
+                )
+            except Exception as exc:
+                # **A tool boundary that broke its own contract.** `ToolBoundary` promises a record
+                # for every dispatch and never a raise; one that raises is synthesised into the
+                # record it should have returned, so the run continues through the *existing*
+                # interpretation — optional means degraded, required means partial — and the trace
+                # still holds one record per dispatch. A dispatch that left no record would break
+                # the log boundary's first clause, and the loss would be invisible.
+                #
+                # `Exception`, not `BaseException`, for the same reason as the provider seam.
+                record = ToolCallRecord(
+                    step=step,
+                    name=call.name,
+                    arguments=call.arguments,
+                    outcome=ToolOutcome.ERROR,
+                    attempts=1,
+                    attempt_outcomes=[ToolOutcome.ERROR],
+                    error=f"the tool boundary raised {type(exc).__name__}: {exc}",
+                )
             dispatched += 1
             self.state.tool_records.append(record)
             self.tracer.tool_call(record)
@@ -723,6 +781,11 @@ def run(
     revision: str | None = None,
 ) -> RunOutput:
     """Run one task to a terminal status. Never raises for a task-level problem.
+
+    That includes a collaborator that breaks its own contract: a provider leaking something that is
+    not a ``ProviderError``, or a tool boundary that raises instead of returning a record, is
+    absorbed at the seam and classified. What still escapes is listed in the module docstring — a
+    log that cannot write, and the process stopping.
 
     ``tracer`` is required and never optional: a run with no record is not a run this
     runtime is willing to perform. The caller closes it.

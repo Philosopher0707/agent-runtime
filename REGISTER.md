@@ -11,13 +11,13 @@ Categories are ordered so a failure is pinpointed by the **first** row that move
 boundary comes first: a broken seam explains every failure below it, and a run of
 failures in one category is one defect, not many.
 
-**29 files · 564 cases.**
+**30 files · 575 cases.**
 
 ## The categories
 
 | # | category | files | cases | a failure here means |
 |---|---|---|---|---|
-| 1 | Boundary | 6 | 117 | The seams other components depend on. A failure here means a contract moved, and every category below it is suspect until this one is green. |
+| 1 | Boundary | 7 | 128 | The seams other components depend on. A failure here means a contract moved, and every category below it is suspect until this one is green. |
 | 2 | Core | 9 | 191 | The loop and what it enforces — the four bounds, context assembly, the failure taxonomy. A failure here is the runtime's own behaviour, with no capability involved. |
 | 3 | Providers | 1 | 20 | The model adapters. A failure here is the wire, not the loop. |
 | 4 | Capabilities | 4 | 67 | The domains built on the runtime. A failure here is a configuration or a tool — the core is untouched, and deleting the capability would leave it green. |
@@ -27,7 +27,7 @@ failures in one category is one defect, not many.
 
 ## 1. Boundary
 
-The seams other components depend on. A failure here means a contract moved, and every category below it is suspect until this one is green. **6 files, 117 cases.**
+The seams other components depend on. A failure here means a contract moved, and every category below it is suspect until this one is green. **7 files, 128 cases.**
 
 | # | file | cases | what it pins (cited from the file's docstring) |
 |---|---|---|---|
@@ -35,8 +35,9 @@ The seams other components depend on. A failure here means a contract moved, and
 | 1.2 | `tests/test_config.py` | 33 | Configuration: the shape a capability must have, and the worked examples. |
 | 1.3 | `tests/test_trace.py` | 20 | The run record: append-only, parseable, and sufficient to reconstruct a run. |
 | 1.4 | `tests/test_run_log.py` | 9 | The log boundary: what the loop may rely on from the thing that records a run. |
-| 1.5 | `tests/test_trace_schema_doc.py` | 13 | The trace schema doc describes the trace schema. |
-| 1.6 | `tests/test_replay.py` | 13 | Replay: the trace alone reconstructs the run, and replay changes nothing. |
+| 1.5 | `tests/test_orchestrator_boundary.py` | 11 | The orchestrator's boundary: what `run()` guarantees when a collaborator breaks its contract. |
+| 1.6 | `tests/test_trace_schema_doc.py` | 13 | The trace schema doc describes the trace schema. |
+| 1.7 | `tests/test_replay.py` | 13 | Replay: the trace alone reconstructs the run, and replay changes nothing. |
 
 ## 2. Core
 
@@ -105,7 +106,7 @@ The guards on the guards — the docs' claims about the code, the gate recipe, a
 
 ## When this snapshot was taken
 
-_Taken 2026-09-29 22:47 IST. Not checked — it says when, not what._
+_Taken 2026-09-30 00:09 IST. Not checked — it says when, not what._
 
 **No revision is recorded here, deliberately.** A SHA written into a file goes stale the
 moment the branch carrying it is rebase-merged: the merge rewrites the commit, and the
