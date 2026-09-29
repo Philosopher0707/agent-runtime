@@ -259,3 +259,62 @@ def test_the_cap_is_deterministic_so_a_capped_run_still_replays(tmp_path, tracer
     )
     replayed = replay(tracer.path, trace_dir=tmp_path / "replay")
     assert replayed.canonical() == original_output(tracer.path).canonical()
+
+
+# --------------------------------------------- one turn, several tool calls
+
+
+def test_tool_calls_in_one_turn_are_run_one_at_a_time(tracer) -> None:
+    """Sequential, and that is load-bearing rather than incidental.
+
+    `runtime/budget.py` gives a child a share of what is *left* and relies on each child's spend
+    being charged back before the next one starts. Its own docstring says a *reservation* would
+    be needed for concurrent children "and there are none", and decisions/0030 repeats it.
+    **Nothing asserted it.** If dispatch were ever parallelised for speed, two spawns in one turn
+    would each allocate from the same untouched remainder and the declared bound would multiply —
+    decisions/0015's defect arriving by the back door.
+
+    The sleep is what makes this a measurement rather than a restatement of a `for` loop:
+    without it, a concurrent implementation could still finish one call before the next one's
+    future is submitted, and the test would pass on a runtime that no longer had the property.
+    """
+    import time
+
+    from pydantic import BaseModel, ConfigDict
+
+    from tools.registry import Tool
+
+    order: list[str] = []
+
+    class LabelArgs(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        label: str
+
+    class Recording(Tool):
+        name = "recording"
+        description = "Notes when it starts and stops."
+        args_model = LabelArgs
+
+        def invoke(self, args: BaseModel) -> str:
+            assert isinstance(args, LabelArgs)
+            order.append(f"start:{args.label}")
+            time.sleep(0.05)
+            order.append(f"stop:{args.label}")
+            return args.label
+
+    execute(
+        "go",
+        config=make_config(tools=["recording"]),
+        tracer=tracer,
+        tools=[Recording()],
+        script=[
+            tool_calls(("recording", {"label": "a"}), ("recording", {"label": "b"})),
+            text("done"),
+        ],
+    )
+
+    assert order == ["start:a", "stop:a", "start:b", "stop:b"], (
+        "two tool calls in one turn overlapped. If dispatch was deliberately made concurrent, "
+        "`Budget.allocate` needs a reservation first — see runtime/budget.py and "
+        "docs/decisions/0030, and reword `spawn_agent`'s description."
+    )

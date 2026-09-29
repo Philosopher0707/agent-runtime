@@ -348,3 +348,25 @@ def test_the_tool_declares_itself_a_side_effect() -> None:
 def test_the_model_never_sees_the_confirmation_field() -> None:
     advertised = SpawnAgentTool(runner=None).describe()
     assert "confirmation_token" not in advertised.parameters.get("properties", {})
+
+
+def test_the_description_does_not_promise_concurrency() -> None:
+    """It used to say "in parallel with", and a spawned run is strictly sequential.
+
+    Measured rather than inferred: two `spawn_agent` calls in one turn produce two child runs
+    whose provider calls do not overlap. The description is model-facing, so a claim in it is a
+    claim this runtime makes — and that one could lead a model to expect a time saving that does
+    not exist, while the ordering guarantee it really gets went unstated.
+
+    Both halves are asserted, deliberately. A test that only banned the word could be satisfied
+    by deleting the sentence, which would leave the ordering exactly as unstated as before.
+    """
+    description = SpawnAgentTool.description.lower()
+    assert "parallel" not in description, (
+        "the description promises concurrency again. Dispatch is a sequential loop — see "
+        "tests/test_loop.py::test_tool_calls_in_one_turn_are_run_one_at_a_time."
+    )
+    assert "one at a time" in description, (
+        "the description no longer states the ordering guarantee, so a model cannot know that "
+        "asking for two sub-agents does not overlap them."
+    )

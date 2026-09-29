@@ -1807,3 +1807,60 @@ file must own.
 *Lesson: a self-test is only a check on the harness if the mutation it uses is one the harness's own
 subject must catch. "Nothing failed" is ambiguous between a blind harness and a mutation nothing
 covers — and the way to tell is to pick a mutation you can name the expected test for.*
+
+### 2026-09-29 — A description that promised concurrency, and an assumption with no tripwire
+
+**L121. The most-read sentence in the repository was the only one nothing checked.**
+
+`spawn_agent`'s description told the model to use it "to work on something in parallel with, or
+independently of, what you are doing". Every document here is checked against the code — links,
+decision ids, make targets, cited tests — and the one string that goes into *every prompt*, inside
+every prompt hash, carried a false clause that nothing looked at.
+
+Measured, on a parent whose stub emits two spawns in one turn:
+
+```
+0.238s enter child A ... 0.393s exit
+0.421s enter child B ... 0.576s exit
+```
+
+Strictly sequential: the loop dispatches a turn's calls through a plain `for`. The description now
+states the ordering, and states the benefit that is real — the child's reasoning stays in its own
+trace, so delegating buys *context*, not time.
+
+*Lesson: documentation is checked where it is machine-readable. A description sent to a model is
+prose with a runtime obligation behind it, and the obligation needs a test — one that bans the
+specific false claim **and** requires the true one, because a ban alone is satisfiable by deleting
+the sentence.*
+
+**L122. And "the code says so" is not the same as "something fails if it stops being true".**
+
+0030's consequences said a reservation would be needed for concurrent children, "there are none, and
+the code says so rather than implying otherwise". The code did say so — in a docstring. Nothing
+asserted it. That is the shape of assumption this project keeps finding: **prose in two files
+agreeing with each other, and no test in either.**
+
+The stakes were not cosmetic. `Budget.allocate` gives each child a share of what is *left*; if
+dispatch were ever parallelised for speed, two spawns in one turn would each allocate from the same
+untouched remainder and a declared `max_cost_usd` of $0.30 would buy $0.60 — 0015's defect, by the
+back door, with the suite green.
+
+*Lesson: when a comment says "there are none" or "this cannot happen", ask what fails if it starts
+happening. If the answer is "nothing, but the comment is right", that is an untested invariant rather
+than a documented one.*
+
+**L123. And the probe harness broke itself in a new way — by clearing the project's pytest config.**
+
+It passed `-o addopts=`, which strips `--basetemp=.pytest-tmp` from `pyproject.toml`. pytest then
+wrote its scratch space to the system temp directory, which this sandbox denies; every test errored;
+no `FAILED` line was parsed; and the harness reported **MISSED for every mutation** — which reads
+exactly like a guard that catches everything.
+
+The fix is not only "keep addopts". The harness now reports a distinct verdict, `UNREADABLE`, when
+pytest exits non-zero with no failure line it could parse. *"I could not read the result"* and *"the
+mutation was not caught"* are different facts, and collapsing them is how an instrument lies in the
+direction of reassurance.
+
+*Lesson: an instrument must be able to say "I do not know". A harness whose only outcomes are CAUGHT
+and MISSED will report MISSED whenever it is broken — and MISSED looks like good news about the
+guard.*

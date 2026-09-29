@@ -104,3 +104,49 @@ would correctly refuse it.
   right, and for a reason worth keeping: delegating spends the caller's budget on a task the
   caller did not specify, and the principal decides that. Two gates, both needed — this one
   authorises *delegating*, the child's own authorises *acting*.
+
+## Addendum, 2026-09-29 — the description said "parallel", and nothing asserted otherwise
+
+`spawn_agent`'s description told the model to use it "to work on something **in parallel with**, or
+independently of, what you are doing". The second half is true. The first was not, and never had
+been: the loop dispatches the calls in one turn through a plain `for`, so two spawns in a single turn
+run one after the other.
+
+Measured rather than read, by instrumenting the provider on a parent whose stub emits two
+`spawn_agent` calls in one turn:
+
+```
+0.238s  enter child A
+0.393s  exit  child A
+0.421s  enter child B
+0.576s  exit  child B
+```
+
+No overlap. A model reading "in parallel" would expect a time saving that does not exist, and the
+ordering guarantee it *does* get — children run in the order they were asked for — was never stated.
+What delegating actually buys is **context**: the child's reasoning stays in its own trace and only
+its rendered answer enters the parent's transcript. That is what the description says now.
+
+**The consequence above said "there are none, and the code says so rather than implying otherwise",
+and that was half true.** The code said so — in a docstring. Nothing *asserted* it, and a comment is
+not a tripwire. That matters more than a wording nit, because the no-reservation argument is what
+makes a hierarchical budget safe: parallelise dispatch for speed and two spawns in one turn each
+allocate from the same untouched remainder, so a declared `max_cost_usd` of $0.30 buys $0.60. That is
+[0015](0015-cost-budget-must-bind.md)'s defect arriving by the back door, and it would have shipped
+with the suite green.
+
+Two tests, and the second is the load-bearing one:
+
+- `test_the_description_does_not_promise_concurrency` pins both halves — the absence of the false
+  claim **and** the presence of the true one. A test that only banned the word could be satisfied by
+  deleting the sentence, which would leave the ordering exactly as unstated as before.
+- `test_tool_calls_in_one_turn_are_run_one_at_a_time` asserts the property the budget rests on. The
+  tool it dispatches sleeps, because without that a concurrent implementation could still finish one
+  call before the next one's future was submitted, and the test would pass on a runtime that no
+  longer had the property.
+
+Probed with the mutation each exists for rather than a convenient one: pre-submitting the turn's
+dispatches to a thread pool fails the dispatch test, and the description test fails from both
+directions. A model-facing string is a claim this runtime makes, and it is the one kind of claim that
+cannot be checked against the code by reading either — so it needs a test that names the behaviour,
+or it drifts back.
