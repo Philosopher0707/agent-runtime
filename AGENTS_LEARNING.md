@@ -43,9 +43,16 @@ cost to be wrong.
    possible response to a lexical signal. *Settle:* decide whether the taxonomy's
    "guardrail trip → refused" row should split into "trip → result withheld, run degraded"
    and "trip → refused", and what the criterion would be.
-3. **Is `chars / 4` an adequate token estimate?** It governs when context is summarised or
-   dropped, and it is worst for dense non-Latin scripts. *Settle:* compare against a real
-   tokeniser on the prompts we actually build.
+3. **Should the token estimate be script-aware?** `chars / 4` decides when context is summarised or
+   dropped, and it has now been measured against a real endpoint (`make token-estimate`). For English
+   prose it is fine and conservative — 5.96 chars/token, so it *over*-estimates by ~1.5x. For
+   Devanagari it is **2.35x low** and for Chinese **2.05x low**, which is the dangerous direction: the
+   soft threshold fires late and the hard ceiling can be passed before anything notices. The fix is
+   conservative and small — weight non-ASCII characters nearer one token each — but it changes the
+   assembled prompt, so it changes every prompt hash, so it invalidates replay for every trace
+   recorded before it. *Settle:* decide whether to take that break now and re-record the fixtures, or
+   to make the estimate a per-configuration choice and document it, which needs no code and leaves the
+   default wrong for a whole class of content.
 4. **Should a clarifying question be once per *run* or once per *ambiguity*?** Currently
    once per run, and the run stops at the first question, so a second ambiguity is never
    reached. *Settle:* watch whether real tasks carry more than one ambiguity.
@@ -2010,3 +2017,62 @@ times out, a model prompted into malformed arguments — which is a different ex
 
 *Lesson: a bound nothing has ever reached is not a validated bound, it is an untested one. "We set it
 to 3 and nothing broke" and "3 is right" are different claims, and only one of them has evidence.*
+
+### 2026-09-30 — Question 4: the token estimate, measured
+
+**L131. The stub could never have answered this, which is exactly why it was still open.**
+
+`chars / 4` decides when context is summarised or dropped. The question said *"compare against a real
+tokeniser on the prompts we actually build"* — and the reason nobody had: **`StubProvider` computes
+`prompt_tokens` with the same `estimate_tokens` the assembler uses.** The golden set is self-consistent
+by definition, so no stub test can ever disagree with the estimate. Only a real endpoint gives an
+independent count.
+
+Two measurements, both now re-runnable as `make token-estimate`.
+
+**The corpus** — pairing each step's `context.estimated_tokens` with the following
+`model_call.prompt_tokens`, over all 212 real traces, 559 calls:
+
+```
+actual/estimate:  min=0.78  median=0.88  max=10.93
+under-estimated:  61 of 559
+largest prompt:   estimate=9242  actual=8137
+```
+
+So as *actually used* — prose plus tool schemas plus JSON envelopes — the estimate runs ~12% high, and
+the largest prompt in the corpus is 8,137 real tokens against a 16,000 ceiling. The estimate has never
+been the thing that ran out.
+
+The `max=10.93` is historical, and that is worth knowing: the worst under-estimates are all in
+`evals/fixtures/`, which predate `#9` — the commit that added schema accounting. A corpus measurement
+that did not split by age would report a defect that was already fixed.
+
+**The scripts** — the same content in three scripts at two lengths each, so the fixed per-message
+overhead cancels in the difference:
+
+```
+script       chars/token   actual vs /4
+english             5.96          0.67   over-estimates
+devanagari          1.71          2.35   UNDER-estimates
+chinese             1.95          2.05   UNDER-estimates
+```
+
+**The question's own aside was the finding.** "Worst for dense non-Latin scripts" was written as a
+caveat, and it is the whole answer. English is over-estimated by 1.5x — wasteful, since summarisation
+fires earlier than needed. Devanagari is under-estimated by 2.35x, so a prompt the runtime believes is
+8,000 tokens is really ~18,800: the soft threshold fires late and the hard ceiling can be passed before
+anything notices. That is the direction that matters, and it is a whole class of content rather than an
+edge case.
+
+*Lesson: "worst for X" in a question is a hypothesis, not a caveat — and it is worth testing first,
+because it is usually where the answer is. Here the caveat and the finding were the same sentence.*
+
+**L132. And a measurement that closes a question should be a script, not a paragraph.**
+
+`scripts/measure_markers.py` set the precedent: a measurement that gates a decision becomes something
+you can re-run. This one will be wanted again the moment the estimator changes, because the number it
+produces **is** the acceptance criterion. So the probe is committed rather than pasted into the log,
+and `make token-estimate` runs it — the corpus half free, `ARGS=--scripts` for the live half.
+
+*Lesson: the evidence for a closed question is the thing a later reader will want to re-derive. A
+number in a log entry is a claim; a script that produces it is an argument.*
