@@ -8,7 +8,8 @@ What this module is allowed to know, and nothing else:
 
 * the ``Provider`` protocol — not any adapter
 * the tool boundary protocol — not any tool
-* the budget, the tracer, the context assembler, the failure taxonomy
+* the log boundary protocol — not the writer that records a run
+* the budget, the context assembler, the failure taxonomy
 
 It knows one tool *name*: ``ask_clarification``, a control tool intercepted before
 dispatch. That is protocol, not capability, and it is the only exception.
@@ -23,7 +24,7 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
@@ -35,6 +36,7 @@ from runtime.budget import Budget, BudgetExceeded
 from runtime.config import Configuration
 from runtime.redact import Redactor
 from runtime.schemas import (
+    ContextRecord,
     FailureEvent,
     ModelCallRecord,
     ModelResponse,
@@ -45,7 +47,6 @@ from runtime.schemas import (
 )
 from runtime.status import FailureClass, Guardrail, RunStatus, ToolOutcome
 from runtime.structured import parse_structured
-from runtime.trace import TraceWriter
 from tools.builtin import CLARIFICATION_TOOL_NAME
 
 #: The most tool calls one step may dispatch.
@@ -89,6 +90,63 @@ class ToolBoundary(Protocol):
     ) -> ToolCallRecord: ...
 
 
+@runtime_checkable
+class RunLog(Protocol):
+    """What the loop needs from the thing that records the run.
+
+    **A boundary, declared rather than extracted.** A protocol with one implementation is usually
+    ceremony. This one is not, because the obligations are the point and none of them were written
+    down anywhere:
+
+    * **One record per dispatch, exactly once, in dispatch order.** The recorded sequence is what
+      replay serves, so a dropped, duplicated or reordered `tool_call` is a run that cannot be
+      replayed — and the loss is invisible, because the run itself still succeeded.
+    * **The record is written before its result is used.** A tool call is logged before its result
+      enters the context for the next prompt. If the process dies in between, the trace holds a
+      call the model never saw, which is *true*; the reverse — a model acting on a result the trace
+      does not contain — is a record that lies about what happened.
+    * **A log that cannot write stops the run.** Nothing here is caught or downgraded. A run with no
+      record is not a run this runtime is willing to perform, so a logger that raises ends the run
+      rather than yielding one with a silent gap in it. This is the one place the loop does *not*
+      turn a problem into a status: there is no status to report, because there is no record to
+      report it in.
+    * **The log is a sink, not a participant.** The loop writes and never reads, except `trace_id`.
+      Nothing a logger does can change an outcome — which is why the same task through two
+      different logs produces the same `RunOutput`. That is what makes the record evidence.
+
+    `TraceWriter` satisfies this structurally and the loop does not import it: the module that
+    records a run is not the module that runs it. `tests/test_run_log.py` fails if the loop learns
+    about the concrete writer again, and if it calls anything the boundary does not declare.
+    """
+
+    @property
+    def trace_id(self) -> str: ...
+
+    def enable_redaction(self, redactor: Redactor) -> None: ...
+
+    def run_started(
+        self,
+        *,
+        task: str,
+        config: Configuration,
+        provider_name: str,
+        model: str,
+        tools: Sequence[ToolDescriptor] = (),
+        prompt_fingerprint: Mapping[str, str] | None = None,
+        revision: str | None = None,
+    ) -> None: ...
+
+    def context(self, record: ContextRecord) -> None: ...
+
+    def model_call(self, record: ModelCallRecord) -> None: ...
+
+    def tool_call(self, record: ToolCallRecord) -> None: ...
+
+    def failure(self, event: FailureEvent) -> None: ...
+
+    def run_finished(self, output: RunOutput) -> None: ...
+
+
 @dataclass
 class _State:
     failures: list[FailureEvent] = field(default_factory=list)
@@ -112,7 +170,7 @@ class _Orchestrator:
         config: Configuration,
         provider: Provider,
         tools: ToolBoundary,
-        tracer: TraceWriter,
+        tracer: RunLog,
         budget: Budget | None,
         confirmation_token: str | None,
         clock: Callable[[], float],
@@ -658,7 +716,7 @@ def run(
     config: Configuration,
     provider: Provider,
     tools: ToolBoundary,
-    tracer: TraceWriter,
+    tracer: RunLog,
     budget: Budget | None = None,
     confirmation_token: str | None = None,
     clock: Callable[[], float] = time.monotonic,
@@ -668,6 +726,11 @@ def run(
 
     ``tracer`` is required and never optional: a run with no record is not a run this
     runtime is willing to perform. The caller closes it.
+
+    It is typed as `RunLog`, not as `TraceWriter`. Everything else here is a protocol too, and a
+    loop that names a concrete writer is a loop that has an opinion about how runs are recorded —
+    which is the same defect as a loop that names a tool. A log that *raises* is the one exception
+    to "never raises": see `RunLog`.
     """
     return _Orchestrator(
         task=task,
@@ -682,4 +745,4 @@ def run(
     ).run()
 
 
-__all__ = ["ToolBoundary", "run"]
+__all__ = ["RunLog", "ToolBoundary", "run"]
