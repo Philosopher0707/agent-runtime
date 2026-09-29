@@ -7,7 +7,7 @@ components, or between the runtime and the outside world, it is one of these.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -69,6 +69,63 @@ class ToolDescriptor(Contract):
     optional: bool
 
 
+class Spend(Contract):
+    """What one call consumed, in the two units a budget charges for.
+
+    **Not a `Budget`.** A budget is a *bound* — four limits and a clock — and a call does not
+    have one. This is the usage side of the same accounting: the number a tool reports and a
+    record carries. Only the two units a call can *cause*: tokens and money. Steps and
+    wall-clock belong to the run that is spending, not to the call.
+
+    It exists because of a defect rather than a design instinct. A delegated run's cost was
+    charged to its parent from inside the code that starts the child, so the charge happened
+    only when a child really ran — and replay, which serves a spawn from the record and never
+    starts a child, reported a parent cost of `$0.0073` against a recorded `$0.0174`. The
+    number has to travel *in the record*, or replay cannot restore it
+    ([decisions/0031](../docs/decisions/0031-the-spend-is-in-the-record.md)).
+
+    Frozen, because a spend that can be edited after the fact is not a record.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    tokens_total: int = Field(default=0, ge=0)
+    cost_usd: float = Field(default=0.0, ge=0.0)
+
+    def __add__(self, other: Spend) -> Spend:
+        """Attempts add up. A call that failed and then succeeded was paid for twice."""
+        return Spend(
+            tokens_total=self.tokens_total + other.tokens_total,
+            cost_usd=self.cost_usd + other.cost_usd,
+        )
+
+    @property
+    def is_zero(self) -> bool:
+        """True for a call that cost nothing, which is every call that does not delegate."""
+        return self.tokens_total == 0 and self.cost_usd == 0.0
+
+
+@dataclass(frozen=True)
+class ToolResult:
+    """What a tool returns when it has more to report than text.
+
+    A tool's result is text, and almost always that is all of it. But a tool that *spends* —
+    starts a run, calls a paid service — has one more fact to report, and the registry has no
+    other channel: `invoke` returns, or it raises, and that is the whole of it.
+
+    So the channel carries two shapes. A bare `str` means "text, and I spent nothing", which is
+    what every existing tool returns and most will keep returning. This type means "text, and
+    here is what it cost". It is not optional for a tool that spends, because a spend nobody
+    reports is a bound that cannot bind.
+
+    A tool that fails *after* spending reports it on the exception instead — see
+    `tools.registry.ToolError`. A failed delegation is not a free one.
+    """
+
+    text: str
+    spend: Spend = field(default_factory=Spend)
+
+
 class ToolCallRecord(Contract):
     """The full account of one tool invocation, attempts included.
 
@@ -84,6 +141,15 @@ class ToolCallRecord(Contract):
     attempts: int = 1
     attempt_outcomes: list[ToolOutcome] = Field(default_factory=list)
     duration_s: float = 0.0
+    #: What this call consumed. Zero for almost every tool — a read is free. Non-zero for a
+    #: tool that spends, which today means a delegated run.
+    #:
+    #: **In the record rather than in the tool, because replay never runs the tool.** The loop
+    #: charges this on both paths, so a replayed run reports the same cost as the run that
+    #: produced it. An older trace has no spend recorded, which is true of it: it was not
+    #: recorded, so its replay understates exactly as it did before. That is why this field is
+    #: optional and the schema version did not change.
+    spend: Spend = Field(default_factory=Spend)
     result: str | None = None
     error: str | None = None
     guardrail: Guardrail | None = None
@@ -246,6 +312,12 @@ class RunOutput(Contract):
                     "outcome": str(rec.outcome),
                     "attempts": rec.attempts,
                     "attempt_outcomes": [str(o) for o in rec.attempt_outcomes],
+                    # Rounded like the top-level cost, so a replay comparison is not decided
+                    # by float noise in a number that was summed in a different order.
+                    "spend": {
+                        "tokens_total": rec.spend.tokens_total,
+                        "cost_usd": round(rec.spend.cost_usd, 9),
+                    },
                     "result": rec.result,
                     "error": rec.error,
                     "guardrail": str(rec.guardrail) if rec.guardrail else None,
@@ -337,8 +409,10 @@ class SpawnResult:
     output: str | None
     reason: str | None
     steps: int
-    cost_usd: float
-    tokens_total: int
+    #: What the child consumed. Carried as a `Spend` rather than as two loose numbers because
+    #: this is the value that has to survive into the parent's tool record — and then into the
+    #: trace — for a replay to charge the same amount. One shape, three hops, no re-assembly.
+    spend: Spend
 
     def render(self) -> str:
         """How the child's outcome reaches the parent's transcript.
@@ -349,7 +423,7 @@ class SpawnResult:
         """
         header = (
             f"[sub-agent] status={self.status} steps={self.steps} "
-            f"cost=${self.cost_usd:.4f} trace={self.trace_id}"
+            f"cost=${self.spend.cost_usd:.4f} trace={self.trace_id}"
         )
         if self.reason:
             header += f" reason={self.reason}"
@@ -375,9 +449,11 @@ __all__ = [
     "SpawnRequest",
     "SpawnResult",
     "SpawnRunner",
+    "Spend",
     "ToolCallRecord",
     "ToolCallRequest",
     "ToolDescriptor",
+    "ToolResult",
     "TraceEvent",
     "TraceRecord",
 ]

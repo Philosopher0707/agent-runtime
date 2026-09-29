@@ -29,7 +29,14 @@ from runtime.config import (
     read_api_key,
 )
 from runtime.loop import run
-from runtime.schemas import RunOutput, RunRequest, SpawnRequest, SpawnResult, SpawnRunner
+from runtime.schemas import (
+    RunOutput,
+    RunRequest,
+    SpawnRequest,
+    SpawnResult,
+    SpawnRunner,
+    Spend,
+)
 from runtime.trace import TraceWriter, new_trace_id
 from tools.catalogue import build_registry
 from tools.registry import Tool, ToolRegistry
@@ -117,6 +124,13 @@ def spawn_runner(
     child's tools are built without this facility, so its `spawn_agent` (if its configuration
     names one) has no way to start anything and refuses. Recursion is a decision nobody has
     needed to take, and this is the shape of not taking it by accident.
+
+    **It does not charge the parent.** What the child spent is *reported* — in the `SpawnResult`
+    the tool turns into a `ToolResult`, and then in the tool call's record — and the loop
+    charges the record. Charging here as well would double-charge a live run, and charging here
+    *instead* is what made a replay understate a delegated run: replay serves the spawn from the
+    record and never reaches this function
+    ([decisions/0031](../../docs/decisions/0031-the-spend-is-in-the-record.md)).
     """
 
     def run_spawn(request: SpawnRequest) -> SpawnResult:
@@ -144,17 +158,15 @@ def spawn_runner(
                 )
         finally:
             registry.close()
-        # Charge what the child *spent*, not what it was allowed. Charging the allocation would
-        # make a spawn cost the parent its whole share whether or not the child used it.
-        budget.charge(child_budget)
         return SpawnResult(
             trace_id=trace_id,
             status=str(output.status),
             output=output.output,
             reason=output.reason,
             steps=output.steps,
-            cost_usd=child_budget.cost_usd,
-            tokens_total=child_budget.tokens_total,
+            # What the child *spent*, not what it was allowed. Charging the allocation would
+            # make a spawn cost the parent its whole share whether or not the child used it.
+            spend=Spend(tokens_total=child_budget.tokens_total, cost_usd=child_budget.cost_usd),
         )
 
     return run_spawn

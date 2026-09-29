@@ -29,12 +29,12 @@ One JSON object per line, keys sorted, UTF-8, flushed after every line.
 | `run_started` | `task`, `config_name`, `config`, `provider`, `model`, `tools`, `prompt_fingerprint`, `revision` | once, first |
 | `context` | `ContextRecord`: `step`, `message_count`, `estimated_tokens`, `summarised_results`, `dropped_messages`, `system_prompt_present`, `task_present` | once per step, before the model call |
 | `model_call` | `ModelCallRecord`: `step`, `provider`, `model`, `prompt_hash`, `prompt_tokens`, `completion_tokens`, `latency_s`, `cost_usd`, `finish_reason`, `refusal`, `response` | once per model call |
-| `tool_call` | `ToolCallRecord`: `step`, `name`, `arguments`, `outcome`, `attempts`, `attempt_outcomes`, `duration_s`, `result`, `error`, `guardrail`, `confirmation_applied` | once per dispatch |
+| `tool_call` | `ToolCallRecord`: `step`, `name`, `arguments`, `outcome`, `attempts`, `attempt_outcomes`, `duration_s`, `spend`, `result`, `error`, `guardrail`, `confirmation_applied` | once per dispatch |
 | `failure` | `FailureEvent`: `failure_class`, `status`, `detail`, `step`, `guardrail` | zero or more |
 | `run_finished` | `RunOutput` — the same payload `POST /run` returns | once, last |
 | `redaction` | `mode`, `patterns`, and per-pattern counts | only when redaction is on |
 
-Two of these carry more than they look like they do:
+Three of these carry more than they look like they do:
 
 - **`run_started.tools` holds the tool *descriptors*, not their names.** They are sent on every
   request, so their text is inside every `prompt_hash`. Rebuilding them from the catalogue would
@@ -45,6 +45,13 @@ Two of these carry more than they look like they do:
   re-decide it. Retry policy lives in the tool boundary
   ([decisions/0003](decisions/0003-retry-policy-location.md)), and the trace records its
   *outcome*, never its reasoning.
+- **`tool_call.spend` is how a delegated run's cost is restored.** A tool that starts another run
+  consumes budget, and on replay that tool never runs — the recorded outcome is served instead. So
+  the consumption travels in the record, and the loop charges it on both paths. Without it a
+  replayed delegated run reports the parent's own spend alone
+  ([decisions/0031](decisions/0031-the-spend-is-in-the-record.md)). It is optional with a default
+  of zero, which is why it needed no schema-version bump: a trace written before it has no spend
+  recorded, and its replay understates exactly as much as it did before.
 
 ## The invariants
 

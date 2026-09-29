@@ -389,6 +389,25 @@ class _Orchestrator:
             dispatched += 1
             self.state.tool_records.append(record)
             self.tracer.tool_call(record)
+            try:
+                # **Charged from the record, not from the tool.** A tool that spends — starting
+                # a run is the only one today — has to be charged on the path that *replays* it
+                # too, and on replay the tool never runs: the record is served instead. Charging
+                # where the spend is created is what made a replayed delegated run report
+                # $0.0073 against a recorded $0.0174
+                # ([decisions/0031](../../docs/decisions/0031-the-spend-is-in-the-record.md)).
+                # Zero for every tool that does not spend, which is all but one of them.
+                self.budget.charge(
+                    tokens_total=record.spend.tokens_total, cost_usd=record.spend.cost_usd
+                )
+            except BudgetExceeded as exc:
+                return self._note_stop(
+                    FailureClass.BUDGET_EXHAUSTED,
+                    RunStatus.PARTIAL,
+                    exc.reason,
+                    step=step,
+                    reason=exc.reason,
+                )
             terminal = self._interpret(record, step, assembler)
 
         if suppressed:

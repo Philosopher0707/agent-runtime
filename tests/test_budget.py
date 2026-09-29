@@ -10,7 +10,8 @@ import pytest
 
 from runtime.budget import Budget, BudgetExceeded
 from runtime.config import BudgetConfig
-from tests.helpers import FakeClock, execute, make_config, text
+from runtime.trace import read_trace
+from tests.helpers import SPEND, FakeClock, SpendingTool, execute, make_config, text, tool_call
 
 
 def make_budget(**overrides: float) -> Budget:
@@ -107,6 +108,69 @@ def test_from_config_carries_all_four_bounds() -> None:
     assert (budget.max_wall_clock_s, budget.max_cost_usd) == (1.5, 0.25)
 
 
+# ------------------------------------------------------------------ what a call spent
+
+
+def test_charging_a_spend_adds_both_units() -> None:
+    budget = make_budget()
+    budget.begin_step()
+    budget.charge(tokens_total=250, cost_usd=0.01)
+    assert budget.tokens_total == 250
+    assert budget.cost_usd == pytest.approx(0.01)
+    assert budget.remaining_tokens == 750
+    assert budget.remaining_cost_usd == pytest.approx(0.99)
+
+
+def test_a_charge_larger_than_the_cost_bound_is_caught_where_it_happened() -> None:
+    """Charged from the record and re-checked, like a model call — not left to the next step.
+
+    A delegated run cannot in fact overshoot, because `allocate` hands out a share of what
+    remains. But "cannot in fact" is a property of today's only caller, and a bound that
+    depends on its caller's arithmetic is not a bound.
+    """
+    budget = make_budget(max_cost_usd=0.001)
+    budget.begin_step()
+    with pytest.raises(BudgetExceeded) as caught:
+        budget.charge(cost_usd=0.01)
+    assert caught.value.limit == "max_cost_usd"
+
+
+def test_a_charge_larger_than_the_token_bound_is_caught_where_it_happened() -> None:
+    budget = make_budget(max_tokens_total=100)
+    budget.begin_step()
+    with pytest.raises(BudgetExceeded) as caught:
+        budget.charge(tokens_total=101)
+    assert caught.value.limit == "max_tokens_total"
+
+
+def test_charging_does_not_apply_the_step_bound() -> None:
+    """Same reason as `add_usage`: the step bound gates *starting* a step, and the step that
+    made this call has already started."""
+    budget = make_budget(max_steps=1)
+    budget.begin_step()
+    budget.charge(tokens_total=5)  # must not raise
+    with pytest.raises(BudgetExceeded, match="max_steps"):
+        budget.begin_step()
+
+
+def test_a_charge_of_nothing_is_still_a_check() -> None:
+    """Deliberate, and worth pinning: the bound is checked at every call, not only at the calls
+    that happened to cost something. A bound that is sometimes not checked is sometimes not a
+    bound — and "this call was free" is not a reason to let an exhausted clock stand."""
+    clock = FakeClock()
+    budget = Budget(
+        max_steps=5,
+        max_tokens_total=1000,
+        max_wall_clock_s=1.0,
+        max_cost_usd=1.0,
+        clock=clock,
+    )
+    clock.advance(2.0)
+    with pytest.raises(BudgetExceeded) as caught:
+        budget.charge()
+    assert caught.value.limit == "max_wall_clock_s"
+
+
 def test_loop_reports_partial_when_steps_run_out(tracer) -> None:
     """A run that needs a second step does not get one."""
     config = make_config(budget={"max_steps": 1})
@@ -137,3 +201,49 @@ def test_loop_never_exceeds_the_step_bound(tracer) -> None:
     assert output.steps <= 4
     assert output.status == "partial"
     assert output.model_calls <= 4
+
+
+# ------------------------------------------- the loop charges what a tool spent
+
+
+def test_a_tool_that_spends_is_charged_to_the_run(tracer) -> None:
+    """The loop charges the *record* — which is why the same charge happens on replay, where
+    the tool never runs and the record is all there is.
+
+    The configuration's prices are zero, so the model spend is zero and the tool's is the whole
+    of the run's cost. That isolates the charge instead of testing two additions at once; the
+    tokens are checked as a *decomposition*, because the stub reports its own.
+    """
+    config = make_config(tools=["spending"])
+    output = execute(
+        "go",
+        config=config,
+        tracer=tracer,
+        tools=[SpendingTool()],
+        script=[tool_call("spending"), text("done")],
+    )
+    model_tokens = sum(
+        event.payload["prompt_tokens"] + event.payload["completion_tokens"]
+        for event in read_trace(tracer.path).of("model_call")
+    )
+    assert output.tool_calls[0].spend == SPEND
+    assert output.tokens_total == model_tokens + SPEND.tokens_total, (
+        "the tool's spend is not in the run's total"
+    )
+    assert output.cost_usd == SPEND.cost_usd
+
+
+def test_a_spend_that_exhausts_a_bound_stops_the_run(tracer) -> None:
+    """Charged before the result is interpreted, exactly as a model call is: a run whose bound
+    is out is over, and the answer it did not get to use is not the point."""
+    config = make_config(tools=["spending"], budget={"max_cost_usd": 0.001})
+    output = execute(
+        "go",
+        config=config,
+        tracer=tracer,
+        tools=[SpendingTool()],
+        script=[tool_call("spending"), text("done")],
+    )
+    assert output.status == "partial"
+    assert output.reason == "budget_exhausted:max_cost_usd"
+    assert output.tool_calls, "the call that spent must still be in the record"

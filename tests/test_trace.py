@@ -18,7 +18,7 @@ from runtime.trace import (
     recorded_task,
     tool_call_records,
 )
-from tests.helpers import execute, make_config, text, tool_call
+from tests.helpers import SPEND, SpendingTool, execute, make_config, text, tool_call
 
 
 def test_trace_ids_are_unique() -> None:
@@ -245,3 +245,24 @@ def test_tool_records_round_trip(tmp_path, tracer) -> None:
     assert isinstance(record, ToolCallRecord)
     assert record.name == "calculator"
     assert record.attempt_outcomes
+
+
+def test_a_tool_records_spend_round_trips(tmp_path, tracer) -> None:
+    """Non-zero on purpose: zero is the field's default, so a trace that dropped it entirely
+    would still round-trip to zero and look right.
+
+    This is the hop the whole mechanism rests on — the record is where replay reads the charge
+    from, because on replay the tool never runs
+    ([decisions/0031](../docs/decisions/0031-the-spend-is-in-the-record.md)).
+    """
+    config = make_config(tools=["spending"])
+    execute(
+        "go",
+        config=config,
+        tracer=tracer,
+        tools=[SpendingTool()],
+        script=[tool_call("spending"), text("done")],
+    )
+    record = tool_call_records(read_trace(tracer.path))[0]
+    assert record.spend == SPEND
+    assert not record.spend.is_zero
