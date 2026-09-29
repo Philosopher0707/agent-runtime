@@ -13,9 +13,8 @@ from providers.stub import StubProvider
 from runtime.budget import Budget
 from runtime.config import Configuration, validate_config
 from runtime.factory import build_tools, run_facilities
-from runtime.loop import run
+from runtime.loop import RunLog, run
 from runtime.schemas import ModelResponse, RunOutput, Spend, ToolResult
-from runtime.trace import TraceWriter
 from tools.registry import Tool
 
 #: What `SpendingTool` reports it consumed, in both units and non-zero in each.
@@ -97,7 +96,7 @@ def execute(
     task: str,
     *,
     config: Configuration,
-    tracer: TraceWriter,
+    tracer: RunLog,
     script: Sequence[ModelResponse | dict[str, Any]] = (),
     default_final: str = "Done.",
     tools: Iterable[Tool] = (),
