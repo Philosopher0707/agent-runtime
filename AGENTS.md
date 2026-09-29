@@ -55,8 +55,8 @@ make ci    # every gate, in order, stopping at the first failure
 
 `make help` lists the rest.
 
-Baseline at initialisation: **0 tests, empty eval set.** Both numbers are expected to move; state
-them in your report. Never quote a count from memory — run it.
+Baseline at initialisation: **0 tests, empty eval set.** Never quote a count from memory — run it,
+or read `REGISTER.md`.
 
 **`make eval` gates CI.** No change may be claimed as an improvement without it.
 
@@ -146,6 +146,7 @@ honestly — "it did not work, here is what I ruled out" is a complete answer.
 
 - `AGENTS_LEARNING.md` — what this project taught us, and what we still do not know.
   Append a dated entry whenever you learn something that would change your next move.
+- `REGISTER.md` — the suite, numbered and by category. Read it to place a failure.
 - `docs/architecture.md` — component map and the reasoning behind the boundaries above.
 - `docs/roadmap.md` — where this is going, in dependency order.
 - `docs/decisions/` — one file per architectural decision, numbered, append-only.

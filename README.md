@@ -35,6 +35,7 @@ make live             # property suite against a REAL model (needs a key; not in
 make markers          # measures the injection-marker rule (ARGS=--repo sweeps this repo)
 make smoke            # boots the service, POSTs one run, asserts 200 + schema
 make rollback REV=<sha>   # revert back to a revision, through the gates
+make register         # regenerate REGISTER.md — the suite, numbered and by category
 ```
 
 `make rollback REV=<sha>` is the one command above that is not self-explanatory: it changes what
@@ -255,6 +256,12 @@ smallest complete configuration to the real provider.
 
 **To parse a trace.** [docs/trace-schema.md](docs/trace-schema.md) — the envelope, every event,
 and the invariants that make replay exact. Read it before writing anything that reads a trace.
+
+**To see what the suite covers, and read a failure.** [REGISTER.md](REGISTER.md) — every test
+file, numbered and grouped by category, with the case counts and the first line of each file's
+own docstring. The boundary comes first, because a broken seam explains every failure below it.
+It is generated (`make register`) and `tests/test_register.py` fails when it drifts, so it cannot
+say anything the suite does not.
 
 **To know where it is going.** [docs/roadmap.md](docs/roadmap.md), in dependency order, and what
 it deliberately is not.
