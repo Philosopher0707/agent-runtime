@@ -10,6 +10,7 @@ These tests use stub configs written to a temporary root, so they exercise the r
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -17,14 +18,21 @@ import pytest
 import yaml
 
 from runtime.factory import run_task
+from runtime.replay import replay
 from runtime.schemas import RunRequest
 from runtime.trace import read_trace
 from tools.registry import ToolError
 from tools.subagent import SpawnAgentArgs, SpawnAgentTool
 
+#: Prices, because a delegated run's cost is the whole subject here: with everything at zero a
+#: charge that lost the money entirely would still compare equal to a charge that kept it.
+#: Spread into every provider block in this file — `write_config` replaces the block, it does
+#: not merge it, so a child or parent written without these would silently run for free.
+PRICES: dict[str, Any] = {"price_input_per_mtok": 1.0, "price_output_per_mtok": 2.0}
+
 MINIMAL: dict[str, Any] = {
     "system_prompt": "A stub.",
-    "provider": {"kind": "stub", "model": "stub", "stub_final": "child done"},
+    "provider": {"kind": "stub", "model": "stub", "stub_final": "child done", **PRICES},
     # Deliberately roomy. A child gets a *share* of this, and a share of a budget that only just
     # fits the parent is a child that cannot finish — which is the allocation working, not a bug.
     "budget": {
@@ -66,6 +74,7 @@ def parent_config(root: Path, *, share: float = 0.5, inherit: bool = False) -> N
                 {"text": '{"findings": []}'},
             ],
             "stub_final": '{"findings": []}',
+            **PRICES,
         },
     )
 
@@ -76,6 +85,21 @@ def run_parent(root: Path, tmp_path: Path, *, token: str | None = "caller-token"
         config_root=root,
         trace_dir=tmp_path / "traces",
     )
+
+
+def parent_trace_path(output: Any, tmp_path: Path) -> Path:
+    return tmp_path / "traces" / f"{output.trace_id}.jsonl"
+
+
+def model_spend(trace_path: Path) -> tuple[int, float]:
+    """What the parent spent on the model itself: ``(tokens, cost)``.
+
+    Read from the trace rather than from the provider, because that is where replay reads it —
+    and because a test that asked the provider would be checking the provider.
+    """
+    records = read_trace(trace_path).of("model_call")
+    tokens = sum(r.payload["prompt_tokens"] + r.payload["completion_tokens"] for r in records)
+    return tokens, sum(r.payload["cost_usd"] for r in records)
 
 
 # --------------------------------------------------------------- the mechanism
@@ -116,14 +140,91 @@ def test_the_child_writes_its_own_trace_and_the_parent_names_it(
 
 def test_the_parent_is_charged_what_the_child_spent(configs: Path, tmp_path: Path) -> None:
     """Charged the *usage*, not the allocation. Charging the allocation would make a spawn cost
-    the parent its whole share whether or not the child used it."""
+    the parent its whole share whether or not the child used it.
+
+    Asserted as a decomposition — the run's totals are the parent's own model spend plus the
+    child's, and nothing else — because "the cost went up" is also true of a run that charged
+    the wrong number.
+    """
     parent_config(configs)
     output = run_parent(configs, tmp_path)
 
-    assert output.tokens_total > 0
-    # The stub is free, so cost is zero — but the child's tokens must be in the parent's total,
-    # which they are only if `charge` ran.
-    assert output.tool_calls[0].result.count("cost=$") == 1
+    delegated = output.tool_calls[0].spend
+    assert delegated.cost_usd > 0, "the child spent nothing, so this proves nothing"
+    assert delegated.tokens_total > 0
+
+    own_tokens, own_cost = model_spend(parent_trace_path(output, tmp_path))
+    assert output.tokens_total == own_tokens + delegated.tokens_total
+    assert output.cost_usd == pytest.approx(own_cost + delegated.cost_usd)
+
+
+# ------------------------------------------------------ replaying a delegated run
+
+
+def test_a_delegated_run_replays_to_the_same_cost(configs: Path, tmp_path: Path) -> None:
+    """The defect [decisions/0030](../../docs/decisions/0030-starting-a-run-from-inside-a-run.md)
+    found and
+    [decisions/0031](../../docs/decisions/0031-the-spend-is-in-the-record.md) fixed.
+
+    On replay the spawn is served from the parent's record — the child is not re-run, which is
+    correct and is the whole point — so the charge has to come from the record too. It did not:
+    the charge lived in the code that starts a child, which replay never reaches, so a replay
+    of this run reported the parent's own model spend alone.
+    """
+    parent_config(configs)
+    output = run_parent(configs, tmp_path)
+    trace_path = parent_trace_path(output, tmp_path)
+
+    replayed = replay(trace_path, trace_dir=tmp_path / "replay")
+
+    _, own_cost = model_spend(trace_path)
+    # The sharp one. Without the child's share these two are equal, and the test would pass on
+    # the broken code if it only compared the replay against the recording.
+    assert replayed.cost_usd > own_cost, "the replay lost the child's share"
+    assert replayed.cost_usd == pytest.approx(output.cost_usd)
+    assert replayed.tokens_total == output.tokens_total
+    assert replayed.canonical() == output.canonical()
+
+
+def test_the_replay_does_not_start_a_second_child(configs: Path, tmp_path: Path) -> None:
+    """The other half of the same claim: the charge is restored *without* re-running the work.
+    A replay that reproduced the cost by spawning again would be a replay that mutates."""
+    parent_config(configs)
+    output = run_parent(configs, tmp_path)
+
+    replay(parent_trace_path(output, tmp_path), trace_dir=tmp_path / "replay")
+
+    assert len(list((tmp_path / "replay").glob("*.jsonl"))) == 1, "the replay spawned something"
+    assert len(list((tmp_path / "traces").glob("*.jsonl"))) == 2, "a third run appeared"
+
+
+def test_the_replayed_cost_comes_from_the_record(configs: Path, tmp_path: Path) -> None:
+    """Proof that the number is *read* rather than recomputed.
+
+    Editing the recorded spend and replaying again must move the replayed cost by the same
+    amount. Otherwise the agreement above is a coincidence, and the charge is coming from
+    somewhere the replay should not be looking.
+    """
+    parent_config(configs)
+    output = run_parent(configs, tmp_path)
+    forged = forge_recorded_spend(parent_trace_path(output, tmp_path), extra_cost=0.001)
+
+    replayed = replay(forged, trace_dir=tmp_path / "replay")
+
+    assert replayed.cost_usd == pytest.approx(output.cost_usd + 0.001)
+
+
+def forge_recorded_spend(trace_path: Path, *, extra_cost: float) -> Path:
+    """A copy of the trace with the delegated spend edited. Nothing else changes."""
+    lines: list[str] = []
+    for line in trace_path.read_text(encoding="utf-8").splitlines():
+        event = json.loads(line)
+        if event["event"] == "tool_call":
+            event["payload"]["spend"]["cost_usd"] += extra_cost
+        lines.append(json.dumps(event))
+    forged = trace_path.with_name("forged.jsonl")
+    forged.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return forged
 
 
 def test_a_child_cannot_spawn(configs: Path, tmp_path: Path) -> None:
@@ -168,6 +269,7 @@ def child_that_acts(root: Path) -> None:
                 {"text": "child done"},
             ],
             "stub_final": "child done",
+            **PRICES,
         },
     )
 

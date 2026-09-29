@@ -7,14 +7,42 @@ from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel, ConfigDict
+
 from providers.stub import StubProvider
 from runtime.budget import Budget
 from runtime.config import Configuration, validate_config
 from runtime.factory import build_tools, run_facilities
 from runtime.loop import run
-from runtime.schemas import ModelResponse, RunOutput
+from runtime.schemas import ModelResponse, RunOutput, Spend, ToolResult
 from runtime.trace import TraceWriter
 from tools.registry import Tool
+
+#: What `SpendingTool` reports it consumed, in both units and non-zero in each.
+#:
+#: Both, deliberately: a test that only moved tokens would not notice the money going missing,
+#: and the money is what a replay is most likely to lose.
+SPEND = Spend(tokens_total=120, cost_usd=0.004)
+
+
+class EmptyArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class SpendingTool(Tool):
+    """A tool that reports what it spent, the way a delegated run does.
+
+    Here rather than in one test module because three of them need the same non-zero number:
+    the loop's charge, the trace's round trip, and a replay.
+    """
+
+    name = "spending"
+    description = "Returns text and a spend."
+    args_model = EmptyArgs
+
+    def invoke(self, args: BaseModel) -> ToolResult:
+        return ToolResult(text="spent it", spend=SPEND)
+
 
 BASE_CONFIG: dict[str, Any] = {
     "name": "test",
@@ -155,7 +183,10 @@ class FakeClock:
 
 __all__ = [
     "BASE_CONFIG",
+    "SPEND",
+    "EmptyArgs",
     "FakeClock",
+    "SpendingTool",
     "execute",
     "make_config",
     "merge",

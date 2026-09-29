@@ -23,7 +23,7 @@ from typing import Any, ClassVar
 
 from pydantic import BaseModel, ValidationError
 
-from runtime.schemas import ToolCallRecord, ToolCallRequest, ToolDescriptor
+from runtime.schemas import Spend, ToolCallRecord, ToolCallRequest, ToolDescriptor, ToolResult
 from runtime.status import Guardrail, ToolOutcome
 
 #: The most attempts any single logical tool call may consume: initial, one repair
@@ -37,7 +37,17 @@ class ToolDefinitionError(Exception):
 
 
 class ToolError(Exception):
-    """A tool ran and failed."""
+    """A tool ran and failed.
+
+    ``spend`` is for a tool that failed *after* spending. A delegated run that came back
+    ``partial`` cost its caller real money, and a record that says otherwise understates the
+    run — the same defect [decisions/0031](../../docs/decisions/0031-the-spend-is-in-the-record.md)
+    exists to close, one hop further along. Defaulted, so an ordinary tool error is unchanged.
+    """
+
+    def __init__(self, *args: object, spend: Spend | None = None) -> None:
+        super().__init__(*args)
+        self.spend = spend or Spend()
 
 
 class ToolTimeout(Exception):
@@ -73,8 +83,8 @@ class Tool(ABC):
     confirmation_field: ClassVar[str] = "confirmation_token"
 
     @abstractmethod
-    def invoke(self, args: BaseModel) -> str:
-        """Run the tool and return its result as text.
+    def invoke(self, args: BaseModel) -> str | ToolResult:
+        """Run the tool and return its result as text, or as text plus what it spent.
 
         Raise ``ToolError``, ``ToolTimeout``, or ``ToolMalformed`` to classify a
         failure. Any other exception is reported as a generic tool error.
@@ -236,11 +246,15 @@ class ToolRegistry:
         outcomes: list[ToolOutcome] = []
         result: str | None = None
         error: str | None = None
+        #: Attempts add up. A call that failed and then succeeded was paid for twice, and only
+        #: the successful attempt's spend would be reported if this were assignment.
+        spend = Spend()
         repairs_left = 1
         retries_left = 1
 
         while len(outcomes) < MAX_ATTEMPTS:
-            outcome, result, error = self._attempt(tool, arguments)
+            outcome, result, error, attempt_spend = self._attempt(tool, arguments)
+            spend = spend + attempt_spend
             outcomes.append(outcome)
             if outcome is ToolOutcome.OK:
                 break
@@ -269,6 +283,7 @@ class ToolRegistry:
             attempts=len(outcomes),
             attempt_outcomes=outcomes,
             duration_s=round(self._monotonic() - started, 6),
+            spend=spend,
             result=result,
             error=error,
             confirmation_applied=confirmation_applied,
@@ -280,11 +295,22 @@ class ToolRegistry:
         self,
         tool: Tool,
         arguments: dict[str, Any],
-    ) -> tuple[ToolOutcome, str | None, str | None]:
+    ) -> tuple[ToolOutcome, str | None, str | None, Spend]:
+        """One attempt, as ``(outcome, result, error, spend)``.
+
+        ``spend`` is reported on *both* ways an attempt can finish, because both can spend: a
+        tool that returns reports it on its result, and a tool that raises reports it on the
+        exception. A call that spent and then failed is not a call that spent nothing.
+
+        A timeout reports zero. The worker thread is not killable, so whatever it went on to
+        spend is discarded along with its result
+        ([decisions/0007](../../docs/decisions/0007-in-process-tool-timeouts.md)) — and an
+        unreported spend is better than a guessed one.
+        """
         try:
             validated = tool.args_model.model_validate(arguments)
         except ValidationError as exc:
-            return ToolOutcome.NOT_EXECUTED, None, f"invalid_arguments: {_brief(exc)}"
+            return ToolOutcome.NOT_EXECUTED, None, f"invalid_arguments: {_brief(exc)}", Spend()
 
         future = self._executor.submit(tool.invoke, validated)
         try:
@@ -293,32 +319,41 @@ class ToolRegistry:
             # The worker thread is not killable. Its result is discarded and the run
             # proceeds; see docs/decisions/0007-in-process-tool-timeouts.md.
             future.cancel()
-            return ToolOutcome.TIMEOUT, None, f"timeout after {tool.timeout_s}s"
+            return ToolOutcome.TIMEOUT, None, f"timeout after {tool.timeout_s}s", Spend()
         except ToolTimeout as exc:
-            return ToolOutcome.TIMEOUT, None, str(exc) or f"timeout after {tool.timeout_s}s"
+            return (
+                ToolOutcome.TIMEOUT,
+                None,
+                str(exc) or f"timeout after {tool.timeout_s}s",
+                Spend(),
+            )
         except ToolMalformed as exc:
-            return ToolOutcome.MALFORMED, None, f"malformed_result: {exc}"
+            return ToolOutcome.MALFORMED, None, f"malformed_result: {exc}", Spend()
         except ToolError as exc:
-            return ToolOutcome.ERROR, None, f"tool_error: {exc}"
+            return ToolOutcome.ERROR, None, f"tool_error: {exc}", exc.spend
         except Exception as exc:
-            return ToolOutcome.ERROR, None, f"{type(exc).__name__}: {exc}"
+            return ToolOutcome.ERROR, None, f"{type(exc).__name__}: {exc}", Spend()
+
+        text, spend, wrong = _normalise_result(raw)
+        if wrong:
+            return (
+                ToolOutcome.MALFORMED,
+                None,
+                f"malformed_result: expected str, got {wrong}",
+                spend,
+            )
 
         if tool.result_model is not None:
             try:
-                tool.result_model.model_validate_json(raw)
+                tool.result_model.model_validate_json(text)
             except (ValidationError, ValueError) as exc:
                 return (
                     ToolOutcome.MALFORMED,
                     None,
                     f"malformed_result: does not satisfy {tool.result_model.__name__}: {exc}",
+                    spend,
                 )
-        elif not isinstance(raw, str):
-            return (
-                ToolOutcome.MALFORMED,
-                None,
-                f"malformed_result: expected str, got {type(raw).__name__}",
-            )
-        return ToolOutcome.OK, raw, None
+        return ToolOutcome.OK, text, None, spend
 
     def _backoff(self, attempt: int) -> None:
         """Jittered exponential backoff between retries."""
@@ -364,6 +399,27 @@ def _brief(exc: ValidationError) -> str:
         parts.append(f"{location}: {error['msg']}")
     extra = "" if len(exc.errors()) <= 4 else f" (+{len(exc.errors()) - 4} more)"
     return "; ".join(parts) + extra
+
+
+def _normalise_result(raw: Any) -> tuple[str | None, Spend, str]:
+    """What a tool returned, as ``(text, spend, wrong_type)``.
+
+    Two shapes are accepted — a bare string, and a string plus a spend. ``wrong_type`` names
+    what was wrong when neither applies, and is empty when the result is usable.
+
+    ``ToolResult.text`` is checked as well as the raw value: wrapping an answer has not earned
+    an exemption from returning text, and a `ToolResult` carrying an `int` is exactly as
+    malformed as a bare `int`. Checking it *before* the ``result_model`` branch also keeps one
+    message for one problem. Handed a non-string, `model_validate_json` reports *"JSON input
+    should be string, bytes or bytearray"* — true, and about the parser rather than the tool.
+    """
+    if isinstance(raw, ToolResult):
+        if isinstance(raw.text, str):
+            return raw.text, raw.spend, ""
+        return None, raw.spend, type(raw.text).__name__
+    if isinstance(raw, str):
+        return raw, Spend(), ""
+    return None, Spend(), type(raw).__name__
 
 
 __all__ = [

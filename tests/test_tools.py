@@ -13,7 +13,7 @@ import time
 import pytest
 from pydantic import BaseModel, ConfigDict
 
-from runtime.schemas import ToolCallRequest
+from runtime.schemas import Spend, ToolCallRequest, ToolResult
 from runtime.status import Guardrail, ToolOutcome
 from tools.registry import (
     Tool,
@@ -46,6 +46,14 @@ class DefaultedConfirmationArgs(BaseModel):
 class ValueArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
     value: int
+
+
+class ConfirmedArgs(BaseModel):
+    """A mutating tool's args: a payload, and the required confirmation field."""
+
+    model_config = ConfigDict(extra="forbid")
+    text: str = "x"
+    confirmation_token: str
 
 
 class Report(BaseModel):
@@ -343,6 +351,143 @@ def test_tool_error_and_malformed_are_distinguishable() -> None:
         assert (
             reg.dispatch(ToolCallRequest(name="mangled"), step=1).outcome is ToolOutcome.MALFORMED
         )
+
+
+# ---------------------------------------------------------------------- the spend
+
+#: What a delegated run costs, in the two units the budget charges for. Small, and non-zero in
+#: both — a test that only moved tokens would not notice a charge that lost the money.
+CHILD_SPEND = Spend(tokens_total=120, cost_usd=0.004)
+
+
+class SpendingTool(FixedTool):
+    """A tool that reports what it consumed, the way a delegated run does."""
+
+    name = "spending"
+    description = "Returns text and a spend."
+
+    def invoke(self, args: BaseModel) -> ToolResult:
+        return ToolResult(text=self.payload, spend=CHILD_SPEND)
+
+
+def test_a_tool_can_report_what_it_spent() -> None:
+    """The channel has to carry a spend, or a tool that spends cannot be charged for it."""
+    with registry(SpendingTool("answer")) as reg:
+        record = reg.dispatch(ToolCallRequest(name="spending"), step=1)
+    assert record.outcome is ToolOutcome.OK
+    assert record.result == "answer"
+    assert record.spend == CHILD_SPEND
+
+
+def test_a_tool_that_reports_nothing_spent_nothing() -> None:
+    """A bare string is the shape almost every tool returns, and it means "free"."""
+    with registry(FixedTool("free")) as reg:
+        record = reg.dispatch(ToolCallRequest(name="fixed"), step=1)
+    assert record.spend.is_zero
+
+
+def test_a_call_that_failed_after_spending_is_recorded_as_having_spent() -> None:
+    """A delegated run that came back `partial` cost its caller real money.
+
+    A record that says otherwise understates the run — and would make the parent's replay
+    diverge from the parent, which is the defect decisions/0031 exists to close.
+
+    Declared non-idempotent, like `spawn_agent` itself, so there is exactly one attempt and the
+    spend is unambiguous.
+    """
+
+    class SpendingFailure(Tool):
+        name = "spending_failure"
+        description = "Spends, then fails. Never retried, because it is not idempotent."
+        args_model = ConfirmedArgs
+        side_effect = True
+        idempotent = False
+
+        def invoke(self, args: BaseModel) -> str:
+            raise ToolError("the spawned run did not complete", spend=CHILD_SPEND)
+
+    with registry(SpendingFailure()) as reg:
+        record = reg.dispatch(
+            ToolCallRequest(name="spending_failure", arguments={}),
+            step=1,
+            confirmation_token="tok",
+        )
+    assert record.outcome is ToolOutcome.ERROR
+    assert record.attempts == 1
+    assert record.spend == CHILD_SPEND
+
+
+def test_every_attempts_spend_is_counted() -> None:
+    """A call that failed and then succeeded was paid for twice.
+
+    Assignment instead of addition would report only the successful attempt, and would do it
+    silently — the total would simply be too small.
+    """
+
+    class FlakySpender(FixedTool):
+        name = "flaky_spender"
+        description = "Spends and fails once, then spends and succeeds."
+
+        def __init__(self) -> None:
+            super().__init__("ok")
+            self.calls = 0
+
+        def invoke(self, args: BaseModel) -> ToolResult:
+            self.calls += 1
+            if self.calls == 1:
+                raise ToolError("first attempt", spend=CHILD_SPEND)
+            return ToolResult(text="ok", spend=CHILD_SPEND)
+
+    with registry(FlakySpender()) as reg:
+        record = reg.dispatch(ToolCallRequest(name="flaky_spender"), step=1)
+    assert record.attempts == 2
+    assert record.spend == Spend(
+        tokens_total=2 * CHILD_SPEND.tokens_total, cost_usd=2 * CHILD_SPEND.cost_usd
+    )
+
+
+def test_a_timed_out_call_reports_no_spend() -> None:
+    """The worker thread is not killable, so whatever it went on to spend is discarded with its
+    result (decisions/0007). An unreported spend is better than a guessed one."""
+    with registry(SlowTool()) as reg:
+        record = reg.dispatch(ToolCallRequest(name="slow"), step=1)
+    assert record.outcome is ToolOutcome.TIMEOUT
+    assert record.spend.is_zero
+
+
+def test_a_result_wrapper_is_not_an_exemption_from_returning_text() -> None:
+    """A `ToolResult` carrying an `int` is exactly as malformed as a bare `int`."""
+
+    class NotText(FixedTool):
+        name = "not_text"
+        description = "Returns a ToolResult whose text is not a string."
+
+        def invoke(self, args: BaseModel) -> ToolResult:
+            return ToolResult(text=1)  # type: ignore[arg-type]
+
+    with registry(NotText("x")) as reg:
+        record = reg.dispatch(ToolCallRequest(name="not_text"), step=1)
+    assert record.outcome is ToolOutcome.MALFORMED
+    assert "expected str, got int" in (record.error or "")
+
+
+def test_a_non_string_result_gets_one_message_with_or_without_a_result_model() -> None:
+    """One problem, one message. With a declared `result_model`, the old order reached
+    `model_validate_json`, which answered *"JSON input should be string, bytes or bytearray"* —
+    true, and about the parser rather than about the tool that returned the wrong type."""
+
+    class NonString(FixedTool):
+        name = "non_string"
+        description = "Declares a result_model and returns something that is not a string."
+        result_model = Report
+
+        def invoke(self, args: BaseModel) -> str:
+            return 3  # type: ignore[return-value]
+
+    with registry(NonString("x")) as reg:
+        record = reg.dispatch(ToolCallRequest(name="non_string"), step=1)
+    assert record.outcome is ToolOutcome.MALFORMED
+    assert "expected str, got int" in (record.error or "")
 
 
 # ------------------------------------------------------------------ descriptors

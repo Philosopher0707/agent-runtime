@@ -94,9 +94,10 @@ class Budget:
         each of three children has declared a $1 bound and spent $3.
 
         The allocation is computed from what remains *now*, so a parent that has already spent
-        cannot allocate what it no longer has. Children run one at a time and each one's spend is
-        charged back, which means a sequence of spawns cannot oversubscribe either — a
-        *reservation* would be needed for concurrent children, and there are none.
+        cannot allocate what it no longer has. Children run one at a time and each one's spend
+        is charged back — by the parent's loop, from the record of the call that started it —
+        which means a sequence of spawns cannot oversubscribe either: a *reservation* would be
+        needed for concurrent children, and there are none.
         """
         if not 0.0 < share <= 1.0:
             raise ValueError(f"a budget share must be in (0, 1], got {share}")
@@ -108,15 +109,30 @@ class Budget:
             clock=self.clock,
         )
 
-    def charge(self, child: Budget) -> None:
-        """Add a child's spend to this budget's own.
+    def charge(self, *, tokens_total: int = 0, cost_usd: float = 0.0) -> None:
+        """Add a call's reported spend to this budget, then re-check.
 
-        The child's *usage*, not its limit. Charging the limit would make a spawn cost the
-        parent its whole allocation whether or not the child used it, which would make
-        spawning expensive in a way nobody declared.
+        **Numbers, not a child `Budget`.** A delegated run's spend arrives here from the
+        *record* of the tool call that started it, because on replay the child is never
+        started and there is no child budget to charge from. That is the whole reason this
+        signature is what it is
+        ([decisions/0031](../../docs/decisions/0031-the-spend-is-in-the-record.md)); it is also
+        why the charge happens in the loop rather than in whatever started the child.
+
+        Re-checked immediately, like :meth:`add_usage`, so a spend larger than a bound is caught
+        where it happened rather than one step later. The check runs even when the spend is
+        zero: the bound is checked at every call, not only at the calls that happened to cost
+        something, and a bound that is sometimes not checked is a bound that is sometimes not
+        a bound.
+
+        Charging the *usage* and not the allocation is the caller's job — the record holds what
+        a call actually consumed. Charging an allocation would make a spawn cost the parent its
+        whole share whether or not the child used it, which would make delegating expensive in
+        a way nobody declared.
         """
-        self.tokens_total += child.tokens_total
-        self.cost_usd += child.cost_usd
+        self.tokens_total += max(0, tokens_total)
+        self.cost_usd += max(0.0, cost_usd)
+        self.check(include_steps=False)
 
     def check(self, *, include_steps: bool = True) -> None:
         """Raise if a bound is reached.

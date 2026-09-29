@@ -13,8 +13,10 @@ importing the loop would invert the layering that keeps the core general. So the
 Four things this file is careful about:
 
 * **The child does not get the parent's budget.** It gets a *share of what is left*, and the
-  parent is charged what the child actually spent. `Budget.allocate` and `Budget.charge` are
-  where that lives; this file only asks for it.
+  parent is charged what the child actually spent — reported here as a `Spend` on the result,
+  or on the error when the child did not finish, because a failed delegation is not a free
+  one. `Budget.allocate` is where the share comes from; the *charge* happens in the loop, from
+  the record, because that is the only place it also happens on replay.
 * **The child does not get the caller's confirmation token** unless the configuration says so.
   The gate exists so the *principal* decides, and a sub-agent's caller is the parent — which is
   not the principal, and did not see the task decomposed.
@@ -30,7 +32,7 @@ from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from runtime.schemas import SpawnRequest, SpawnResult, SpawnRunner
+from runtime.schemas import SpawnRequest, SpawnResult, SpawnRunner, ToolResult
 from tools.registry import Tool, ToolError
 
 
@@ -108,7 +110,7 @@ class SpawnAgentTool(Tool):
         self._inherit_confirmation = inherit_confirmation
         self._max_depth = max_depth
 
-    def invoke(self, args: BaseModel) -> str:
+    def invoke(self, args: BaseModel) -> ToolResult:
         assert isinstance(args, SpawnAgentArgs)
         if self._runner is None:
             raise ToolError(
@@ -130,6 +132,12 @@ class SpawnAgentTool(Tool):
                 inherit_confirmation=self._inherit_confirmation,
             )
         )
+        #: Reported on **both** outcomes. A child that came back `partial` still spent what it
+        #: spent, and a record that says otherwise understates the parent — which is the defect
+        #: decisions/0031 exists to close, one hop further along. This is also why the spend
+        #: travels as a `Spend` rather than as two loose numbers: it has to survive three hops
+        #: (child budget → result → tool record → trace) without being re-assembled on the way.
+        spend = result.spend
         if result.status in {"failed", "refused", "partial"}:
             # A child that did not finish is a tool that did not succeed. Raised rather than
             # returned so the existing taxonomy decides what it means for the parent — which is
@@ -137,9 +145,10 @@ class SpawnAgentTool(Tool):
             raise ToolError(
                 f"the spawned run did not complete: status={result.status}"
                 f"{f' reason={result.reason}' if result.reason else ''} "
-                f"(trace {result.trace_id})"
+                f"(trace {result.trace_id})",
+                spend=spend,
             )
-        return result.render()
+        return ToolResult(text=result.render(), spend=spend)
 
 
 __all__ = ["SpawnAgentArgs", "SpawnAgentTool", "SpawnRequest", "SpawnResult", "SpawnRunner"]
