@@ -235,7 +235,8 @@ concrete.
 
 Not "later" — **not**, unless something changes:
 
-- Multi-agent orchestration. One loop, bounded, is the whole point.
+- An orchestration framework. Delegation is not refused — a run can start a run, one level deep and
+  sequential — but a framework around it is. One loop, bounded, is the whole point.
 - Memory across runs. Every run starts from the task; the trace is the record, not the
   context.
 - A UI. The service and the CLI are the interfaces.

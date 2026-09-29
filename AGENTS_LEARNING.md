@@ -57,17 +57,6 @@ cost to be wrong.
    redacts too much makes a trace useless, and that balance has never been measured against
    real data. *Settle:* run it over a corpus of real traces and count how much useful
    content it removes. The marker work (L10–L14) is the template.
-9. **Three documents say there is no multi-agent orchestration, and the code says otherwise.**
-   `AGENTS.md` ("No multi-agent orchestration in v1"), `docs/roadmap.md` ("Deliberately not on this
-   roadmap: Multi-agent orchestration. One loop, bounded, is the whole point") and
-   `docs/architecture.md` ("What is not here: … No multi-agent orchestration") were all written
-   before `spawn_agent`, `spawn_runner` and `configs/verify_sweep.yaml` existed. A run can now start
-   a run, which is delegation between agents by any ordinary reading — and no check covers a *prose*
-   claim the way the citation checks cover a named test. Found while making room in `AGENTS.md`, not
-   by anything failing. *Settle:* decide which the non-goal meant. If it meant "no orchestration
-   *framework*", reword all three to say that and name the one-level bound. If it meant "no
-   delegation at all", then the mechanism is the defect — and the delete test would not catch it,
-   because `spawn_agent` is a capability and capabilities are allowed.
 
 ## Log
 
@@ -1919,3 +1908,30 @@ the new authority the one document whose citations could rot unnoticed.
 
 *Lesson: when a file becomes the authority, ask what is now unchecked about it. A root-level file sits
 outside the `docs/` sweep by default, and that is precisely where a rot would stay invisible.*
+
+### 2026-09-30 — The non-goals that denied a mechanism
+
+**L127. Three documents said "no multi-agent orchestration" while `spawn_agent` existed, and no check could see it.**
+
+`AGENTS.md` ("No multi-agent orchestration in v1"), `docs/roadmap.md` and `docs/architecture.md` all
+denied it, and all three were written before the mechanism. The claim was found while making room in
+`AGENTS.md` for a pointer — not by anything failing.
+
+**Every check in `test_repo_hygiene.py` resolves a *name*:** a link, a make target, a decision id, a
+test function, a tool. "No multi-agent orchestration" is not a name. It is a sentence, and a sentence
+about the code has no resolution step, so nothing can disagree with it.
+
+The answer is not one the question offered. The two readings were "no orchestration *framework*" and "no
+delegation at all" — and the code settles it: `spawn_agent` exists, it is one level deep, and it is
+sequential. What is genuinely absent is a framework around the loop. So all three now say that, and
+`docs/architecture.md` names the mechanism rather than talking around it.
+
+`test_no_document_denies_the_delegation_that_exists` bans the specific phrase, with a partner asserting
+that `spawn_agent` is registered — the same shape as the check that bans "parallel" from `spawn_agent`'s
+description. It is narrow on purpose and its docstring says so: a regex cannot verify that prose matches
+code, but it can stop one false sentence coming back.
+
+*Lesson: the checks a project has are the ones its claims can be shaped to fit. A claim with no name in
+it is invisible to a name-resolving check, however many of those there are. So when a claim like that
+turns out to be false, the fix is not only the sentence — it is a check, even a narrow one, because the
+next false sentence will look exactly like this one.*

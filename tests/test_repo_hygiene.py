@@ -311,6 +311,47 @@ def test_the_tool_name_check_is_not_vacuous() -> None:
     assert about_tools >= 1, "no doc line names two real tools — the check is vacuous"
 
 
+# ----------------------------- non-goals may not deny what the code actually does
+
+
+#: The claim that the runtime does no multi-agent work *at all*. Delegation exists — a run can
+#: start a run — so this is a claim about the code, written in prose.
+DENIES_DELEGATION = re.compile(r"\bno multi-agent\b", re.IGNORECASE)
+
+
+def test_no_document_denies_the_delegation_that_exists() -> None:
+    """A **prose** claim about the code, and nothing checked it.
+
+    Every other check in this file resolves a *name*: a link, a make target, a decision id, a test
+    function, a tool. "No multi-agent orchestration" is not a name — it is a sentence, and three
+    documents carried it for as long as `spawn_agent` has existed. It was found while making room in
+    `AGENTS.md`, not by anything failing.
+
+    **This check is deliberately narrow, and it is not a general verifier.** It cannot decide
+    whether a document's prose matches the code; nothing a regex can do is that. What it can do is
+    stop this one sentence coming back — the same shape as the check that bans "parallel" from
+    `spawn_agent`'s description, and it exists for the same reason: a claim sent to a reader, or to
+    a model, is a claim the runtime makes.
+
+    The partner below is what keeps it honest. If there were no delegation, denying it would be
+    correct and this check would be noise.
+    """
+    from tools.catalogue import available_tool_names
+
+    assert "spawn_agent" in set(available_tool_names()), (
+        "there is no delegation to deny, so this check proves nothing — delete it"
+    )
+    offenders = [
+        f"{path.name}: {match.group()!r}"
+        for path in citing_docs()
+        for match in DENIES_DELEGATION.finditer(path.read_text(encoding="utf-8"))
+    ]
+    assert not offenders, (
+        f"these documents deny delegation while `spawn_agent` is registered: {offenders}. Say what "
+        f"is actually absent — a framework around the loop — or delete the mechanism."
+    )
+
+
 # ------------------------------------------------ the one rule, made checkable
 
 
