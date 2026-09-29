@@ -119,9 +119,9 @@ rollback is not a rollback.
 
 ## Non-goals
 
-Not a chatbot. No conversation memory across runs. No user accounts or UI in v1. No multi-agent
-orchestration in v1. No fine-tuning. No provider-specific code in the core. No framework. No tool
-that mutates an external system without a confirmation token.
+Not a chatbot. No conversation memory across runs. No user accounts or UI in v1. No orchestration
+framework — delegation is one level deep. No fine-tuning. No provider-specific code in the core. No
+tool that mutates an external system without a confirmation token.
 
 ## Open decisions
 

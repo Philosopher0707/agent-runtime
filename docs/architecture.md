@@ -154,9 +154,10 @@ A capability is a configuration, never a branch in the core.
 
 ## What is not here
 
-Not a chatbot. No conversation memory across runs. No user accounts or UI. No
-multi-agent orchestration. No fine-tuning. No provider-specific code in the core. No
-framework — the loop is 40 lines of orchestration and is meant to stay that way.
+Not a chatbot. No conversation memory across runs. No user accounts or UI. No orchestration
+framework — delegation exists, `spawn_agent` starts a bounded run, and it is one level deep because a
+spawned run cannot spawn. No fine-tuning. No provider-specific code in the core. No framework around
+the loop, which is 40 lines of orchestration and is meant to stay that way.
 
 ## Known limitations
 
