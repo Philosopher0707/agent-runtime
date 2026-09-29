@@ -11,16 +11,16 @@ Categories are ordered so a failure is pinpointed by the **first** row that move
 boundary comes first: a broken seam explains every failure below it, and a run of
 failures in one category is one defect, not many.
 
-**30 files · 583 cases.**
+**30 files · 585 cases.**
 
 ## The categories
 
 | # | category | files | cases | a failure here means |
 |---|---|---|---|---|
 | 1 | Boundary | 7 | 136 | The seams other components depend on. A failure here means a contract moved, and every category below it is suspect until this one is green. |
-| 2 | Core | 9 | 191 | The loop and what it enforces — the four bounds, context assembly, the failure taxonomy. A failure here is the runtime's own behaviour, with no capability involved. |
+| 2 | Core | 9 | 192 | The loop and what it enforces — the four bounds, context assembly, the failure taxonomy. A failure here is the runtime's own behaviour, with no capability involved. |
 | 3 | Providers | 1 | 20 | The model adapters. A failure here is the wire, not the loop. |
-| 4 | Capabilities | 4 | 67 | The domains built on the runtime. A failure here is a configuration or a tool — the core is untouched, and deleting the capability would leave it green. |
+| 4 | Capabilities | 4 | 68 | The domains built on the runtime. A failure here is a configuration or a tool — the core is untouched, and deleting the capability would leave it green. |
 | 5 | Service and operations | 3 | 35 | The surfaces around a run, and the tools that move a build: HTTP, revisions, rollback. |
 | 6 | Runs and evals | 2 | 49 | Real runs rather than constructed ones: recorded traces replayed in CI, and the live suite's own contract. |
 | 7 | Repo hygiene | 4 | 85 | The guards on the guards — the docs' claims about the code, the gate recipe, and this page. A failure here means something said is no longer true. |
@@ -41,11 +41,11 @@ The seams other components depend on. A failure here means a contract moved, and
 
 ## 2. Core
 
-The loop and what it enforces — the four bounds, context assembly, the failure taxonomy. A failure here is the runtime's own behaviour, with no capability involved. **9 files, 191 cases.**
+The loop and what it enforces — the four bounds, context assembly, the failure taxonomy. A failure here is the runtime's own behaviour, with no capability involved. **9 files, 192 cases.**
 
 | # | file | cases | what it pins (cited from the file's docstring) |
 |---|---|---|---|
-| 2.1 | `tests/test_loop.py` | 15 | The loop: orchestration behaviour that is not a taxonomy row. |
+| 2.1 | `tests/test_loop.py` | 16 | The loop: orchestration behaviour that is not a taxonomy row. |
 | 2.2 | `tests/test_budget.py` | 18 | The budget: four bounds, all enforced, none bypassable. |
 | 2.3 | `tests/test_taxonomy.py` | 26 | The failure taxonomy: one test per row, and both branches where a row has two. |
 | 2.4 | `tests/test_context.py` | 23 | Context assembly: the invariants that must hold, and the pressure that tests them. |
@@ -65,13 +65,13 @@ The model adapters. A failure here is the wire, not the loop. **1 file, 20 cases
 
 ## 4. Capabilities
 
-The domains built on the runtime. A failure here is a configuration or a tool — the core is untouched, and deleting the capability would leave it green. **4 files, 67 cases.**
+The domains built on the runtime. A failure here is a configuration or a tool — the core is untouched, and deleting the capability would leave it green. **4 files, 68 cases.**
 
 | # | file | cases | what it pins (cited from the file's docstring) |
 |---|---|---|---|
 | 4.1 | `tests/test_triage.py` | 25 | The triage domain's tools. |
 | 4.2 | `tests/test_verify.py` | 17 | The verify domain's tools, and the boundary they draw. |
-| 4.3 | `tests/test_subagent.py` | 13 | Starting a run from inside a run. |
+| 4.3 | `tests/test_subagent.py` | 14 | Starting a run from inside a run. |
 | 4.4 | `tests/test_judge.py` | 12 | The judge: the scorer for properties an assertion cannot reach. |
 
 ## 5. Service and operations
@@ -106,7 +106,7 @@ The guards on the guards — the docs' claims about the code, the gate recipe, a
 
 ## When this snapshot was taken
 
-_Taken 2026-09-30 00:12 IST. Not checked — it says when, not what._
+_Taken 2026-09-30 00:35 IST. Not checked — it says when, not what._
 
 **No revision is recorded here, deliberately.** A SHA written into a file goes stale the
 moment the branch carrying it is rebase-merged: the merge rewrites the commit, and the

@@ -54,11 +54,27 @@ class SpawnAgentTool(Tool):
     """Run a separate agent on a sub-task and return what it reported."""
 
     name = "spawn_agent"
+    #: **Model-facing prose, so a claim in it is a claim this runtime makes.**
+    #:
+    #: It used to say "in parallel with, or independently of, what you are doing". The second
+    #: half is true and the first was not: the loop dispatches the calls in one turn through a
+    #: plain `for`, so two spawns in a single turn run one after the other — measured, not
+    #: inferred. A model reading "in parallel" would expect a time saving that does not exist,
+    #: and the ordering guarantee it *does* get was never stated.
+    #:
+    #: What delegating actually buys is context: the child's reasoning stays in its own trace and
+    #: only its rendered answer enters this transcript. That is the honest reason to reach for it,
+    #: so that is what the description now says.
+    #:
+    #: `test_the_description_does_not_promise_concurrency` pins both halves — the absence of the
+    #: false claim and the presence of the true one — because wording is the kind of thing that
+    #: gets "improved" back into a lie by someone who has not read the loop.
     description = (
         "Run a separate agent on a sub-task and return its answer. The agent cannot see this "
-        "conversation, so the task must be self-contained. Use it to work on something in "
-        "parallel with, or independently of, what you are doing — not to ask a question you "
-        "could answer from what you already have."
+        "conversation, so the task must be self-contained. Use it to keep a long job out of "
+        "your own context, or to work independently of what you are doing — not to ask a "
+        "question you could answer from what you already have. Spawned agents run one at a "
+        "time, in the order you ask for them."
     )
     args_model = SpawnAgentArgs
     #: **Spawning is a side effect, and I had this wrong first.**
