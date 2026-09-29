@@ -20,6 +20,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 AGENTS_MD = REPO_ROOT / "AGENTS.md"
 README_MD = REPO_ROOT / "README.md"
+REFERENCE_MD = REPO_ROOT / "REFERENCE.md"
 LEARNING_LOG = REPO_ROOT / "AGENTS_LEARNING.md"
 
 #: The budget AGENTS.md states for itself.
@@ -185,7 +186,7 @@ CITED_TEST_FUNC = re.compile(r"\b(test_[a-z_0-9]+)\b(?!\.py)")
 
 
 def citing_docs() -> list[Path]:
-    """The **reference** docs: README, the spec, and `docs/`.
+    """The **reference** docs: the reference itself, README, the spec, and `docs/`.
 
     `AGENTS_LEARNING.md` is deliberately excluded. It is a historical record of mistakes, so it
     must be free to name things that were wrong — including a test that never existed, which is
@@ -195,8 +196,14 @@ def citing_docs() -> list[Path]:
     The reference docs are the opposite: they make claims a reader acts on, so every citation
     in them must resolve. The false citation this check was written for appeared in *both* a
     decision record and the log, so excluding the log still catches it.
+
+    `REFERENCE.md` is included because it is the densest citer of tests in the repository — every
+    rule in it names the test that pins the rule. A file that cites tests as evidence is exactly
+    what this check is for, and a root file would otherwise be the one place a citation could rot
+    unnoticed. It is tracked, unlike `REGISTER.md` and `NOTES.md`, which are generated and whose
+    contents are derived from the things they name.
     """
-    return [README_MD, AGENTS_MD, *(REPO_ROOT / "docs").rglob("*.md")]
+    return [REFERENCE_MD, README_MD, AGENTS_MD, *(REPO_ROOT / "docs").rglob("*.md")]
 
 
 def suite_files() -> set[str]:

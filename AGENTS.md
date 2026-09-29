@@ -55,8 +55,7 @@ make ci    # every gate, in order, stopping at the first failure
 
 `make help` lists the rest.
 
-Baseline at initialisation: **0 tests, empty eval set.** Never quote a count from memory — run it,
-or read `REGISTER.md`.
+Never quote a count from memory — run it, or read `REGISTER.md`.
 
 **`make eval` gates CI.** No change may be claimed as an improvement without it.
 
@@ -90,7 +89,7 @@ On exhaustion, see the taxonomy row above. An unbounded loop is how a demo becom
   reach. State which scorer graded a run.
 - Start at ~20 cases, grow to 100+. **Include the adversarial ones from day one**: injection
   attempts, empty input, oversized input, off-topic input, inputs that must be refused.
-- `make eval` gates CI. Record the score in the commit message when it moves.
+- Record the eval score in the commit message when it moves.
 
 Build the harness before the agent: against a stub, it forces the contract to be real.
 
@@ -146,7 +145,8 @@ honestly — "it did not work, here is what I ruled out" is a complete answer.
 
 - `AGENTS_LEARNING.md` — what this project taught us, and what we still do not know.
   Append a dated entry whenever you learn something that would change your next move.
-- `REGISTER.md` — the suite, numbered and by category. Read it to place a failure.
+- `REFERENCE.md` · `REGISTER.md` · `NOTES.md` — the conventions and traps; the suite by category;
+  each document's leading claim.
 - `docs/architecture.md` — component map and the reasoning behind the boundaries above.
 - `docs/roadmap.md` — where this is going, in dependency order.
 - `docs/decisions/` — one file per architectural decision, numbered, append-only.

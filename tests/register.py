@@ -176,6 +176,7 @@ CATEGORIES: tuple[Category, ...] = (
             "test_ci_contract.py",
             "test_env_file.py",
             "test_register.py",
+            "test_notes.py",
         ),
     ),
 )
