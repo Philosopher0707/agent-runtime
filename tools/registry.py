@@ -175,6 +175,19 @@ class ToolRegistry:
             raise ToolDefinitionError(
                 f"{tool.name}: a tool with no side effect is idempotent by definition"
             )
+
+        # **A tool that cannot describe itself cannot be registered.** The descriptor is built from
+        # the args model and is sent on every request, so a tool whose schema cannot be rendered is
+        # a run that dies at setup — before anything is recorded, where the failure is hardest to
+        # attribute. Proving it here puts the defect with the other registration invariants, which
+        # is where a tool author is already looking.
+        try:
+            tool.describe()
+        except Exception as exc:
+            raise ToolDefinitionError(
+                f"{tool.name}: describe() raised {type(exc).__name__}: {exc}. The descriptor is "
+                f"part of every prompt, so a tool that cannot produce one cannot be registered."
+            ) from exc
         self._tools[tool.name] = tool
 
     # -- inspection -----------------------------------------------------------
@@ -214,7 +227,15 @@ class ToolRegistry:
     ) -> ToolCallRecord:
         """Handle one logical tool call, including its attempts.
 
-        Never raises for a tool-level problem: every failure becomes a record.
+        **Never raises for a tool-level problem**: every failure becomes a record, including a
+        tool's args model raising something pydantic did not wrap, and the executor refusing the
+        work.
+
+        What it deliberately does *not* cover is a **composition error** — the injected clock or
+        the backoff ``sleep`` raising. Those are the caller's own broken callables rather than the
+        tool's, and the registry cannot file them as a tool record any more than a run can be
+        failed by a clock that does not exist. `runtime/loop.py` absorbs them at its seam, so a run
+        still ends with a status instead of an exception — see decisions/0034.
         """
         tool = self._tools.get(request.name)
         if tool is None:
@@ -311,8 +332,29 @@ class ToolRegistry:
             validated = tool.args_model.model_validate(arguments)
         except ValidationError as exc:
             return ToolOutcome.NOT_EXECUTED, None, f"invalid_arguments: {_brief(exc)}", Spend()
+        except Exception as exc:
+            # A tool's own schema code raising something pydantic did not wrap — a `TypeError` out
+            # of a `field_validator`, say. It is the tool's defect, so it is the tool's record, and
+            # `dispatch` keeps its promise not to raise for a tool-level problem.
+            return (
+                ToolOutcome.NOT_EXECUTED,
+                None,
+                f"invalid_arguments: the args model raised {type(exc).__name__}: {exc}",
+                Spend(),
+            )
 
-        future = self._executor.submit(tool.invoke, validated)
+        try:
+            future = self._executor.submit(tool.invoke, validated)
+        except Exception as exc:
+            # The pool is gone — the registry was closed, or it refused the work. The registry owns
+            # the executor, so this is a failure for *it* to report rather than for the caller to
+            # catch, and a caller who closed the registry has already stopped expecting records.
+            return (
+                ToolOutcome.ERROR,
+                None,
+                f"the tool could not be dispatched: {type(exc).__name__}: {exc}",
+                Spend(),
+            )
         try:
             raw = future.result(timeout=tool.timeout_s)
         except FutureTimeout:
