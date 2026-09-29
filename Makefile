@@ -6,7 +6,7 @@ SHELL := /bin/bash
 # environment to override.
 UV ?= uv
 
-.PHONY: help install lock-check check lint format test eval live smoke markers ci rollback register notes run clean
+.PHONY: help install lock-check check lint format test eval live smoke markers token-estimate ci rollback register notes run clean
 
 help:
 	@echo "install     sync dependencies into .venv (creates uv.lock)"
@@ -20,6 +20,7 @@ help:
 	@echo "rollback    revert back to REV=<sha> on a branch, through the gates"
 	@echo "register    regenerate REGISTER.md — the suite, numbered and by category"
 	@echo "notes       regenerate NOTES.md — the docs, with the claim each one leads with"
+	@echo "token-estimate  measure the token estimate against a real endpoint (ARGS=--scripts)"
 	@echo "run         run the CLI against configs/default.yaml"
 
 install:
@@ -65,6 +66,13 @@ live:
 
 markers:
 	$(UV) run python scripts/measure_markers.py $(ARGS)
+
+# `chars / 4` decides when context is summarised or dropped, and the stub cannot check it: the stub
+# computes `prompt_tokens` with the same estimator the assembler uses, so the golden set is
+# self-consistent by definition. This measures it against a real endpoint instead. The corpus half
+# needs no key; ARGS=--scripts adds the non-Latin probe, which does.
+token-estimate:
+	$(UV) run python scripts/measure_token_estimate.py $(ARGS)
 
 smoke:
 	$(UV) run python scripts/smoke.py
