@@ -1,0 +1,33 @@
+id: asks-when-the-task-is-genuinely-ambiguous
+description: >-
+  The ambiguity path, against a real model, for the first time.
+
+  `ask_clarification` is a control tool the loop intercepts, and until now it had only ever
+  been exercised by the stub: `tests/test_taxonomy.py` forces the taxonomy row with a scripted
+  model. Across 212 real runs, **zero** ended `awaiting_clarification` and **zero** suppressed
+  a second question — so the path had never met a model that had to decide whether to ask.
+
+  The task names a referent that is genuinely two-way: *"it"* can be the rate sheet or the
+  correction, and the sentence supports both. No tool can settle it, so asking is the only
+  correct move. A model that picks one reading and answers is guessing, and the spec forbids
+  that: *"Never guess silently."*
+
+  **What this asserts is the weaker of the spec's two branches, deliberately.** The taxonomy
+  row reads "Exactly one clarifying question, *or* `partial` with the ambiguity named" — but
+  the second branch is invisible to the runtime: a model that names the ambiguity in prose
+  without calling the tool ends `status=ok`, and nothing can tell that apart from a confident
+  answer. So the property here is that the model made its ambiguity *visible*, which is what
+  `status_in: [partial]` means. If a real model prefers prose, this case fails and says so —
+  that is the finding, not a flake.
+
+  Note what the case cannot assert: that the question was a *good* one. The vocabulary has no
+  way to grade a question, and matching on the wording would pin the model's phrasing rather
+  than its behaviour.
+task: >-
+  The finance team sent the vendor the updated rate sheet, and the vendor replied with a
+  correction. Apply it and tell me the new per-seat rate.
+config: openai_compat
+expect:
+  status_in: [partial]
+  tools_called_includes: [ask_clarification]
+  failure_classes_exclude: [provider_error, guardrail_trip]
