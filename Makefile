@@ -6,7 +6,7 @@ SHELL := /bin/bash
 # environment to override.
 UV ?= uv
 
-.PHONY: help install lock-check check lint format test eval live smoke markers token-estimate ci rollback register notes run clean
+.PHONY: help install lock-check check lint format test eval live smoke markers token-estimate redaction-audit ci rollback register notes run clean
 
 help:
 	@echo "install     sync dependencies into .venv (creates uv.lock)"
@@ -21,6 +21,7 @@ help:
 	@echo "register    regenerate REGISTER.md — the suite, numbered and by category"
 	@echo "notes       regenerate NOTES.md — the docs, with the claim each one leads with"
 	@echo "token-estimate  measure the token estimate against a real endpoint (ARGS=--scripts)"
+	@echo "redaction-audit what the redaction patterns actually catch in real traces"
 	@echo "run         run the CLI against configs/default.yaml"
 
 install:
@@ -73,6 +74,12 @@ markers:
 # needs no key; ARGS=--scripts adds the non-Latin probe, which does.
 token-estimate:
 	$(UV) run python scripts/measure_token_estimate.py $(ARGS)
+
+# The redaction set is meant to over-match — a false positive costs a digit, a false negative leaks
+# data. The question is whether it over-matches enough to make a trace useless, which is only visible
+# in what it actually caught. No key needed; it reads the traces on disk.
+redaction-audit:
+	$(UV) run python scripts/measure_redaction.py $(ARGS)
 
 smoke:
 	$(UV) run python scripts/smoke.py

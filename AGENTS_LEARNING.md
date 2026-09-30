@@ -53,19 +53,11 @@ cost to be wrong.
    recorded before it. *Settle:* decide whether to take that break now and re-record the fixtures, or
    to make the estimate a per-configuration choice and document it, which needs no code and leaves the
    default wrong for a whole class of content.
-4. **Should a clarifying question be once per *run* or once per *ambiguity*?** Currently
-   once per run, and the run stops at the first question, so a second ambiguity is never
-   reached. *Settle:* watch whether real tasks carry more than one ambiguity.
-5. **Is the 8,000-byte budget on `AGENTS.md` workable?** See 2026-09-27 / L7. It has since
+4. **Is the 8,000-byte budget on `AGENTS.md` workable?** See 2026-09-27 / L7. It has since
    been measured across every commit that touched the file: 7,704 at initialisation, a peak
    of 7,973, 7,960 now — never more than ~300 bytes of headroom in the file's whole life.
    The budget is permanently binding rather than aspirational, and it has only ever gone
    *down* when something was added.
-6. **Does the redaction pattern set over-redact real traces?** It is deliberately
-   aggressive — a false positive costs a digit, a false negative leaks data — but a set that
-   redacts too much makes a trace useless, and that balance has never been measured against
-   real data. *Settle:* run it over a corpus of real traces and count how much useful
-   content it removes. The marker work (L10–L14) is the template.
 
 ## Log
 
@@ -2076,3 +2068,61 @@ and `make token-estimate` runs it — the corpus half free, `ARGS=--scripts` for
 
 *Lesson: the evidence for a closed question is the thing a later reader will want to re-derive. A
 number in a log entry is a claim; a script that produces it is an argument.*
+
+### 2026-09-30 — Questions 4 and 6: the clarification contract, and what redaction catches
+
+**L133. Question 4 was answered by the spec, and the corpus had nothing to weigh against it.**
+
+The question asked whether a clarifying question should be once per *run* or once per *ambiguity*,
+noting that "a second ambiguity is never reached". Two things settle it.
+
+**`AGENTS.md`'s taxonomy already says "Exactly one clarifying question, or `partial` with the ambiguity
+named."** So the behaviour is not an accident of the loop — it is the spec, and `_handle_clarification`
+implements it: the first question is recorded, any later one in the same turn increments
+`clarifications_suppressed`, and the run ends `awaiting_clarification`.
+
+**And the corpus has no counter-example.** Across 212 real runs: **0** ended awaiting clarification and
+**0** suppressed a second question. So the trade-off the question worried about has never been exercised
+by a real task — and the premise was slightly wrong anyway: a second ambiguity is not *lost*, it is
+deferred to the next run, because a run is one exchange.
+
+The decision is to keep it. The spec says one, nothing in the corpus argues otherwise, and
+`clarifications_suppressed` is what makes the answer safe — a second question is counted and reported
+rather than silently dropped, which is the property that would matter if a task ever did need two.
+
+*Lesson: before weighing a design trade-off, check whether the spec has already ruled. A question
+asking "should X be A or B" when the spec says A is not an open question — it is a proposal to change
+the spec, which is a different and larger thing. Say which one you are answering.*
+
+**L134. Question 6: the aggressive redaction set does not over-redact, and the audit is now a script.**
+
+The set is deliberately aggressive — the failure economics are the opposite of the injection
+guardrail's, because a false positive here costs a digit from a log while a false negative leaks
+personal data. The question was whether it over-matches *enough to make a trace useless*.
+
+Applied to every string in every real trace, 1,971 events:
+
+```
+events redaction would change:  269  (13%)
+characters:                     3,503,668 -> 3,503,872   0.006% LONGER
+per-pattern matches:            email 378 | phone 0 | credit_card 0 | national_id 0 | api_key 0
+what `email` matched:           sam@example.com x103, ops@example.org x81, lee@example.com x74, ...
+```
+
+**One pattern fired, only on reserved `example.*` domains, and nothing useful was lost.** The corpus is
+a reasonable false-positive stress test — ticket references like `A-4014`, log ids like `R-0030`, tables
+of numbers — and `phone`, `credit_card` and `national_id` produced zero false positives across all of it.
+
+Two things worth stating rather than glossing. First, the trace gets *longer*: `[redacted:email]` exceeds
+`sam@example.com`, so "how much content was removed" is the wrong metric — the right one is *which*
+strings changed, which is why the audit prints the matches and not only the counts. Second, **this
+measures the false-positive half only.** The corpus holds no real personal data, so nothing here says
+whether the patterns *detect* anything; an audit reporting "no leaks found" from it would be reporting
+the absence of the thing it never contained.
+
+Committed as `scripts/measure_redaction.py`, run by `make redaction-audit`, for the reason L132 gives —
+a measurement that closes a question should be re-runnable, and this is the one to run after changing a
+pattern.
+
+*Lesson: "does this over-fire" is answered by reading the matches, not the count — and an audit has to
+say which half of a trade it measured. A test with no positives in it cannot fail on a false negative.*
