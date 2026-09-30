@@ -34,6 +34,7 @@ make eval             # golden set, prints the score, non-zero below threshold
 make live             # property suite against a REAL model (needs a key; not in ci)
 make markers          # measures the injection-marker rule (ARGS=--repo sweeps this repo)
 make token-estimate   # measures the token estimate against a real endpoint (ARGS=--scripts)
+make redaction-audit  # what the redaction patterns actually catch in real traces
 make smoke            # boots the service, POSTs one run, asserts 200 + schema
 make rollback REV=<sha>   # revert back to a revision, through the gates
 make register         # regenerate REGISTER.md — the suite, numbered and by category
