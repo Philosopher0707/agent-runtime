@@ -36,14 +36,30 @@ cost to be wrong.
    not decided is **where it belongs** — a core rule would have the loop parse a
    capability's output schema, and a capability rule would be a guardrail only `verify`
    carries. *Settle:* decide that placement first, because it is the whole question.
-2. **Should a guardrail trip refuse the run, or only withhold the tool result?**
+2. **Does the ambiguity contract survive a real model?** The spec's row says "exactly one
+   clarifying question, or `partial` with the ambiguity named", and `ask_clarification` exists
+   *"so that 'the model wants to ask something' is a first-class, countable event rather than a
+   sentence we pattern-match out of prose."* **A real model produces the sentence.**
+   `evals/live_cases/15-asks-when-the-task-is-genuinely-ambiguous` gives a task whose referent
+   is genuinely two-way; across two runs the model named the gap in prose — once writing
+   *"Before I ask:"* before asking three sub-questions — and called the tool **zero** times.
+   Adding an explicit instruction to the system prompt (*"call `ask_clarification` … do not
+   explain the gap in prose instead of asking"*) changed nothing: the instruction was verified
+   present in the recorded prompt and the model still did not call it. So the machine-readable
+   half of the contract never fires, and a caller cannot tell `status=ok` *"answered"* from
+   `status=ok` *"needs input"*. *Settle:* decide the fix. Prompting is measured and does not
+   work. Making the signal part of a **required output schema** is the promising one — the model
+   reliably fills a required field and `runtime/structured.py` already validates one — but it
+   only reaches configs with structured output. Detecting the prose is the third option, and the
+   tool's own docstring says why it was rejected.
+3. **Should a guardrail trip refuse the run, or only withhold the tool result?**
    Measuring the marker false-positive rate (see the log entry for 2026-09-27) exposed
    this: the scan has a real precision limit — it refuses prose that *quotes* a payload,
    including two files in this repository — and refusing the whole run is the coarsest
    possible response to a lexical signal. *Settle:* decide whether the taxonomy's
    "guardrail trip → refused" row should split into "trip → result withheld, run degraded"
    and "trip → refused", and what the criterion would be.
-3. **Should the token estimate be script-aware?** `chars / 4` decides when context is summarised or
+4. **Should the token estimate be script-aware?** `chars / 4` decides when context is summarised or
    dropped, and it has now been measured against a real endpoint (`make token-estimate`). For English
    prose it is fine and conservative — 5.96 chars/token, so it *over*-estimates by ~1.5x. For
    Devanagari it is **2.35x low** and for Chinese **2.05x low**, which is the dangerous direction: the
@@ -53,7 +69,7 @@ cost to be wrong.
    recorded before it. *Settle:* decide whether to take that break now and re-record the fixtures, or
    to make the estimate a per-configuration choice and document it, which needs no code and leaves the
    default wrong for a whole class of content.
-4. **Is the 8,000-byte budget on `AGENTS.md` workable?** See 2026-09-27 / L7. It has since
+5. **Is the 8,000-byte budget on `AGENTS.md` workable?** See 2026-09-27 / L7. It has since
    been measured across every commit that touched the file: 7,704 at initialisation, a peak
    of 7,973, 7,960 now — never more than ~300 bytes of headroom in the file's whole life.
    The budget is permanently binding rather than aspirational, and it has only ever gone
@@ -2126,3 +2142,53 @@ pattern.
 
 *Lesson: "does this over-fire" is answered by reading the matches, not the count — and an audit has to
 say which half of a trade it measured. A test with no positives in it cannot fail on a false negative.*
+
+### 2026-09-30 — Question 4 reopened: the model asks in prose
+
+**L135. L133 closed question 4 on the spec. Hitting the path showed the closure was premature — and that the spec's second branch is invisible.**
+
+L133 reasoned that `AGENTS.md` already says "exactly one clarifying question", and that the corpus held
+no counter-example. Both true, and both beside the point: **the corpus held no example at all.** Across
+212 real runs, zero asked and zero suppressed — which is not evidence that the contract works, it is
+evidence that it had never been exercised. Closing on a spec plus an empty corpus is the same mistake as
+calling a path tested because its unit test is green.
+
+So the path was hit. `evals/live_cases/15-asks-when-the-task-is-genuinely-ambiguous` gives a task whose
+referent is genuinely two-way — *"the vendor replied with a correction. Apply it"*, where *it* is the
+rate sheet or the correction — and asserts that the ambiguity was made **visible** to the runtime.
+
+The model named the gap in prose and called the tool **zero times**:
+
+> *"I don't have the vendor's correction — it's not in our conversation. … Could you paste the vendor's
+> reply (or just the corrected rate)?"*
+
+`status=ok`, `reason=completed`. **The spec's second branch is unobservable to the runtime** — a model
+that names an ambiguity in prose produces exactly the trace a confident answer produces. The caller
+cannot tell *"answered"* from *"needs input"*, so the round trip the contract exists to enable cannot be
+automated at all.
+
+**And prompting does not fix it.** The next run added an explicit instruction to the system prompt:
+*"call `ask_clarification` with one question. Do not answer from a guess, and do not explain the gap in
+prose instead of asking."* The instruction was verified present in the recorded prompt. The model still
+made no tool call, and its answer began **"Before I ask:"** before asking three sub-questions in prose.
+It understood the intent and narrated it anyway.
+
+*Lesson: a contract that depends on a model choosing a structured signal is a contract with an
+unmeasured success rate. Measure it before closing the question — "the spec says so and nothing
+contradicts it" is what an unexercised path looks like from the outside.*
+
+**L136. And this is the third time in one session that the runtime could not see what the model did.**
+
+A fabricated citation the runtime cannot check (L129). A description promising concurrency the runtime
+does not deliver (L121). Now a question the runtime cannot hear. The shape is identical each time:
+**the runtime's contracts are written as though the model emits a structured signal, and a real model
+produces prose.** Each was found by pointing a real model at the contract — not by reading the contract.
+
+The promising fix is not a better prompt, which is measured and failed. It is to move the signal into
+the **output schema**: a config whose schema requires a field the model must fill, validated by
+`runtime/structured.py` (0036). A model reliably fills a required field, and the runtime already knows
+how to enforce one. What that does not reach is a `format: text` config, which is why this is recorded
+as a question rather than implemented.
+
+*Lesson: when the same failure shape appears three times, it is no longer three findings — it is a
+property of the design. Name the pattern, and stop fixing instances of it one at a time.*
